@@ -67,6 +67,7 @@ export interface Messages {
     matchNote: string;
     privacyNote: string;
     liveNote: string;
+    sameBrowserHint: string;
     cancel: string;
   };
   lost: {

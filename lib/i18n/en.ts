@@ -71,7 +71,8 @@ export const en: Messages = {
     title: "Searching for a compatible mind...",
     matchNote: "Matching respects frequency, tone, and conversation intent.",
     privacyNote: "No profile is exposed while you wait. If no compatible signal appears, you can cancel and retune.",
-    liveNote: "Waiting state is now real in live mode.",
+    liveNote: "Waiting is real in live mode. To test with two tabs, use incognito or another browser.",
+    sameBrowserHint: "Each tab is now a separate signal. Pick the same frequency (Daily works best) and matching tone/mode.",
     cancel: "Cancel search"
   },
   lost: {

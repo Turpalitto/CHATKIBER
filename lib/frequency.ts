@@ -49,16 +49,21 @@ export function getTodaysFrequency(date = new Date(), locale: Locale = "en"): Fr
   };
 }
 
-export function getRandomFrequency(seed = Math.random(), locale: Locale = "en"): Frequency {
-  const normalizedSeed = Math.min(0.999999, Math.max(0, seed));
+export function getRandomFrequency(seed?: number, locale: Locale = "en", date = new Date()): Frequency {
+  const hourlyBucket = Math.floor(date.getTime() / 3_600_000);
+  const normalizedSeed = typeof seed === "number"
+    ? Math.min(0.999999, Math.max(0, seed))
+    : ((hourlyBucket % 997) + 1) / 998;
   const prompts = locale === "ru" ? RU_RANDOM_PROMPTS : EN_RANDOM_PROMPTS;
-  const prompt = prompts[Math.floor(normalizedSeed * prompts.length)];
+  const prompt = prompts[Math.floor(normalizedSeed * prompts.length) % prompts.length];
+  const number = 9000 + (hourlyBucket % 500);
+
   return {
-    id: `random-${Math.floor(normalizedSeed * 10_000_000)}`,
-    number: 9000 + Math.floor(normalizedSeed * 999),
+    id: `random-${number}`,
+    number,
     prompt,
     kind: "random",
-    dateKey: dateKey(new Date())
+    dateKey: dateKey(date)
   };
 }
 

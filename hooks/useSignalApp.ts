@@ -14,7 +14,7 @@ export function useSignalApp() {
 
   const [stage, setStage] = useState<AppStage>("landing");
   const [dailyFrequency, setDailyFrequency] = useState<Frequency>(() => getTodaysFrequency(undefined, locale));
-  const [randomFrequency, setRandomFrequency] = useState<Frequency>(() => getRandomFrequency(0.421337, locale));
+  const [randomFrequency, setRandomFrequency] = useState<Frequency>(() => getRandomFrequency(undefined, locale));
   const [activeFrequency, setActiveFrequency] = useState<Frequency | null>(null);
   const [mode, setMode] = useState<ModeOption>("both");
   const [tone, setTone] = useState<ToneOption>("deep");
@@ -30,7 +30,7 @@ export function useSignalApp() {
 
   useEffect(() => {
     const nextDaily = getTodaysFrequency(undefined, locale);
-    const nextRandom = getRandomFrequency(Math.random(), locale);
+    const nextRandom = getRandomFrequency(undefined, locale);
     setDailyFrequency(nextDaily);
     setRandomFrequency(nextRandom);
 
@@ -68,7 +68,7 @@ export function useSignalApp() {
   const findAnotherSignal = useCallback(() => {
     session.resetSessionVisuals();
     setActiveFrequency(null);
-    setRandomFrequency(getRandomFrequency(Math.random(), locale));
+    setRandomFrequency(getRandomFrequency(undefined, locale));
     session.clearEngine();
     session.resetWarnings();
     setStage("frequency");
@@ -77,7 +77,7 @@ export function useSignalApp() {
   const cancelWaiting = useCallback(async () => {
     await session.cancelWaiting();
     setActiveFrequency(null);
-    setRandomFrequency(getRandomFrequency(Math.random(), locale));
+    setRandomFrequency(getRandomFrequency(undefined, locale));
   }, [locale, session]);
 
   return {

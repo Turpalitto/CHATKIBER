@@ -5,7 +5,7 @@ export function getAnonymousId() {
     return "server-anon";
   }
 
-  const existing = window.localStorage.getItem(STORAGE_KEY);
+  const existing = window.sessionStorage.getItem(STORAGE_KEY);
   if (existing) {
     return existing;
   }
@@ -14,7 +14,7 @@ export function getAnonymousId() {
     ? crypto.randomUUID()
     : `anon-${Math.random().toString(36).slice(2, 10)}`;
 
-  window.localStorage.setItem(STORAGE_KEY, next);
+  window.sessionStorage.setItem(STORAGE_KEY, next);
   return next;
 }
 

@@ -29,6 +29,11 @@ export function WaitingSignal({ onCancel }: WaitingSignalProps) {
         <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4 text-sm leading-7 text-white/52">
           {m.waiting.privacyNote}
         </div>
+        {process.env.NEXT_PUBLIC_SIGNAL_LIVE === "1" ? (
+          <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/5 px-4 py-4 text-sm leading-7 text-cyan-50/78">
+            {m.waiting.sameBrowserHint}
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

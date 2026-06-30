@@ -102,6 +102,15 @@ create index if not exists signal_events_recipient_idx
 create index if not exists signal_voice_qos_session_idx
   on signal_voice_qos_samples (session_id, anon_token_hash, created_at);
 
+create table if not exists signal_voice_qos_shares (
+  id uuid primary key default gen_random_uuid(),
+  token text not null unique,
+  session_id uuid not null references signal_sessions(id) on delete cascade,
+  anon_token_hash text not null,
+  created_at timestamptz not null default timezone('utc', now()),
+  expires_at timestamptz not null default timezone('utc', now()) + interval '24 hours'
+);
+
 create index if not exists signal_voice_qos_shares_expiry_idx
   on signal_voice_qos_shares (expires_at);
 
@@ -348,6 +357,7 @@ alter table signal_flags enable row level security;
 alter table signal_recent_pairs enable row level security;
 alter table signal_events enable row level security;
 alter table signal_voice_qos_samples enable row level security;
+alter table signal_voice_qos_shares enable row level security;
 
 drop policy if exists signal_queue_no_direct_access on signal_queue;
 drop policy if exists signal_sessions_no_direct_access on signal_sessions;
@@ -373,6 +383,7 @@ revoke all on signal_flags from anon, authenticated;
 revoke all on signal_recent_pairs from anon, authenticated;
 revoke all on signal_events from anon, authenticated;
 revoke all on signal_voice_qos_samples from anon, authenticated;
+revoke all on signal_voice_qos_shares from anon, authenticated;
 
 grant execute on function join_signal_queue(text, signal_mode, signal_tone, signal_frequency_kind, bigint, text) to anon, authenticated;
 grant execute on function await_signal_match(text) to anon, authenticated;

@@ -1,4 +1,6 @@
 import { ModerationResult } from "./types";
+import { Locale } from "./i18n";
+import { getMessages } from "./i18n";
 
 const SEXUAL_PATTERNS = [
   /\b(?:nude|nudes|nudity|horny|onlyfans|fetish)\b/i,
@@ -6,46 +8,56 @@ const SEXUAL_PATTERNS = [
   /\bhook\s?up\b/i,
   /\bsend\s+(?:pics|nudes)\b/i,
   /\bturn(?:ed)?\s+on\b/i,
-  /\b(?:kiss me|sleep with me|want you badly)\b/i
+  /\b(?:kiss me|sleep with me|want you badly)\b/i,
+  /(?:голая|голые|нюдс|секс|интим|пошл|эротик|onlyfans|хентай|порно)/i,
+  /(?:пошли\s+фото|скинь\s+фото|встретимся\s+сегодня)/i
 ];
 
 const HARASSMENT_PATTERNS = [
   /\b(?:kill yourself|kys|stupid bitch|you idiot|moron|worthless|loser)\b/i,
   /\bshut up\b.*\bidiot\b/i,
-  /\bgo die\b/i
+  /\bgo die\b/i,
+  /(?:убей\s+себя|иди\s+нахуй|ты\s+идиот|тупой|дебил|урод|мразь|ублюдок)/i
 ];
 
 const HATE_PATTERNS = [
   /\b(?:nazi|white power|ethnic cleansing)\b/i,
   /\bgas the\b/i,
-  /\b(?:fag|nigger|kike|chink)\b/i
+  /\b(?:fag|nigger|kike|chink)\b/i,
+  /(?:нацист|свастик|расист|этническ\w+\s+чистк)/i
 ];
 
 const ILLEGAL_PATTERNS = [
   /\b(?:buy drugs|sell drugs|credit card dump|exploit kit|stolen account)\b/i,
   /\bhow to make\b.*\bweapon\b/i,
   /\bterror(?:ist|ism)?\b/i,
-  /\bbomb\b/i
+  /\bbomb\b/i,
+  /(?:купи\s+наркот|продам\s+наркот|взлом\s+аккаунт|кардинг|террор|взрывчат)/i
 ];
 
 const CONTACT_PATTERNS = [
   /@[a-z0-9_.]{2,}/i,
-  /\b(?:telegram|discord|instagram|insta|whatsapp|snapchat)\b/i,
+  /\b(?:telegram|discord|instagram|insta|whatsapp|snapchat|vkontakte|vk)\b/i,
   /\b(?:ig|tg|dc)\b/i,
   /\b(?:signal me|add me|text me|message me|dm me|hit me up)\b/i,
   /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i,
-  /\+?\d[\d\s\-()]{7,}\d/
+  /\+?\d[\d\s\-()]{7,}\d/,
+  /(?:телеграм|телега|инстаграм|инста|ватсап|вотсап|дискорд|вконтакте|в\s+лс|напиши\s+мне|добавь\s+меня)/i,
+  /(?:t\.me\/|vk\.com\/|instagram\.com\/)/i
 ];
 
-function maskContacts(text: string) {
+function maskContacts(text: string, locale: Locale) {
+  const reasons = getMessages(locale).moderationReasons;
   return text
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[contact blocked]")
-    .replace(/\+?\d[\d\s\-()]{7,}\d/g, "[number blocked]")
-    .replace(/@[a-z0-9_.]{2,}/gi, "[handle blocked]");
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, reasons.contactBlocked)
+    .replace(/\+?\d[\d\s\-()]{7,}\d/g, reasons.numberBlocked)
+    .replace(/@[a-z0-9_.]{2,}/gi, reasons.handleBlocked)
+    .replace(/(?:t\.me\/|vk\.com\/|instagram\.com\/)[^\s]+/gi, reasons.contactBlocked);
 }
 
-export function moderateMessage(text: string): ModerationResult {
+export function moderateMessage(text: string, locale: Locale = "en"): ModerationResult {
   const normalized = text.trim();
+  const reasons = getMessages(locale).moderationReasons;
 
   if (!normalized) {
     return { status: "allow" };
@@ -55,7 +67,7 @@ export function moderateMessage(text: string): ModerationResult {
     return {
       status: "block",
       category: "sexual",
-      reason: "SIGNAL is not for sexual content or dating-oriented chat."
+      reason: reasons.sexual
     };
   }
 
@@ -63,7 +75,7 @@ export function moderateMessage(text: string): ModerationResult {
     return {
       status: "block",
       category: "harassment",
-      reason: "Toxic or abusive language breaks the signal."
+      reason: reasons.harassment
     };
   }
 
@@ -71,7 +83,7 @@ export function moderateMessage(text: string): ModerationResult {
     return {
       status: "block",
       category: "hate",
-      reason: "Hate speech is not allowed on SIGNAL."
+      reason: reasons.hate
     };
   }
 
@@ -79,7 +91,7 @@ export function moderateMessage(text: string): ModerationResult {
     return {
       status: "block",
       category: "illegal",
-      reason: "Illegal or extremist content is blocked."
+      reason: reasons.illegal
     };
   }
 
@@ -87,8 +99,8 @@ export function moderateMessage(text: string): ModerationResult {
     return {
       status: "warn",
       category: "contact",
-      reason: "Contact exchange is masked to preserve anonymity.",
-      maskedText: maskContacts(normalized)
+      reason: reasons.contact,
+      maskedText: maskContacts(normalized, locale)
     };
   }
 
@@ -96,7 +108,7 @@ export function moderateMessage(text: string): ModerationResult {
     return {
       status: "warn",
       category: "spam",
-      reason: "Please keep the conversation human and readable."
+      reason: reasons.spam
     };
   }
 

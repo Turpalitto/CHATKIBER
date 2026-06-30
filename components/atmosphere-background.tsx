@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 
 const PARTICLES = Array.from({ length: 18 }, (_, index) => ({
   id: index,
@@ -10,6 +10,18 @@ const PARTICLES = Array.from({ length: 18 }, (_, index) => ({
 }));
 
 export function AtmosphereBackground() {
+  const reduceMotion = useReducedMotion();
+
+  if (reduceMotion) {
+    return (
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 noise-layer opacity-40" />
+        <div className="absolute inset-0 grid-overlay opacity-20" />
+        <div className="absolute left-1/2 top-1/2 h-[18rem] w-[18rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/10" />
+      </div>
+    );
+  }
+
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       <div className="absolute inset-0 noise-layer" />

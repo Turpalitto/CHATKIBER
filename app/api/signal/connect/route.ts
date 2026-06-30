@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { requireSignalServer } from "@/lib/server/signal-service";
 import { Frequency, ModeOption, ToneOption } from "@/lib/types";
 
@@ -16,6 +17,11 @@ export async function POST(request: NextRequest) {
 
     if (!anonTokenHash || !mode || !tone || !frequency?.kind || typeof frequency.number !== "number" || typeof frequency.prompt !== "string") {
       return NextResponse.json({ reason: "Invalid connect payload." }, { status: 400 });
+    }
+
+    const rate = enforceRateLimit(request, "signal-connect", 12, 60_000, anonTokenHash);
+    if (!rate.ok) {
+      return NextResponse.json({ reason: "Too many connect attempts." }, { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } });
     }
 
     const supabase = requireSignalServer();

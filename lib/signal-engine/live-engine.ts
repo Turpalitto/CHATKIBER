@@ -1,5 +1,5 @@
 import { Message, ModerationResult, VoiceDiagnosticsShareResult, VoiceQosExportResult, VoiceQosRecommendationsResult, VoiceQosReportResult, VoiceQosSample, WebRtcSignalMessage } from "@/lib/types";
-import { uid } from "@/lib/utils";
+import { dispatchRelayEvent } from "@/lib/signal/relay-events";
 import { EngineConnectOptions, EngineConnectResult, EngineEvent, EngineSendTextResult, SignalEngine } from "./index";
 
 async function postJson<T>(url: string, body: Record<string, unknown>) {
@@ -22,6 +22,22 @@ async function postJson<T>(url: string, body: Record<string, unknown>) {
   return payload as T;
 }
 
+type SsePayload =
+  | { type: "ready" }
+  | { type: "heartbeat"; ts: number }
+  | { type: "queued"; ts: number }
+  | { type: "matched"; sessionId: string }
+  | { type: "event"; event: { event_type: string; payload: Record<string, unknown> } }
+  | { type: "error"; reason: string };
+
+function parseSsePayload(raw: string): SsePayload | null {
+  try {
+    return JSON.parse(raw) as SsePayload;
+  } catch {
+    return null;
+  }
+}
+
 export function createLiveSignalEngine(): SignalEngine {
   const listeners = new Set<(event: EngineEvent) => void>();
 
@@ -29,6 +45,8 @@ export function createLiveSignalEngine(): SignalEngine {
   let activeAnonHash = "";
   let matchPollTimer: ReturnType<typeof setTimeout> | null = null;
   let eventPollTimer: ReturnType<typeof setTimeout> | null = null;
+  let eventSource: EventSource | null = null;
+  let matchSource: EventSource | null = null;
   let closed = false;
 
   function emit(event: EngineEvent) {
@@ -37,6 +55,15 @@ export function createLiveSignalEngine(): SignalEngine {
     }
 
     listeners.forEach((listener) => listener(event));
+  }
+
+  function relayEvent(event: { event_type: string; payload: Record<string, unknown> }) {
+    if (event.event_type === "disconnect") {
+      resetStreams();
+      sessionId = "";
+    }
+
+    dispatchRelayEvent(event, emit);
   }
 
   function stopMatchPolling() {
@@ -53,7 +80,23 @@ export function createLiveSignalEngine(): SignalEngine {
     }
   }
 
-  function resetPolling() {
+  function stopEventStream() {
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+  }
+
+  function stopMatchStream() {
+    if (matchSource) {
+      matchSource.close();
+      matchSource = null;
+    }
+  }
+
+  function resetStreams() {
+    stopMatchStream();
+    stopEventStream();
     stopMatchPolling();
     stopEventPolling();
   }
@@ -63,6 +106,82 @@ export function createLiveSignalEngine(): SignalEngine {
     eventPollTimer = setTimeout(() => {
       void pollEvents();
     }, delay);
+  }
+
+  function scheduleMatchPoll(delay = 2200) {
+    stopMatchPolling();
+    matchPollTimer = setTimeout(() => {
+      void pollForMatch();
+    }, delay);
+  }
+
+  function startEventStream() {
+    stopEventStream();
+    if (!sessionId || !activeAnonHash || closed || typeof EventSource === "undefined") {
+      scheduleEventPoll(200);
+      return;
+    }
+
+    const url = `/api/signal/events/stream?sessionId=${encodeURIComponent(sessionId)}&anonTokenHash=${encodeURIComponent(activeAnonHash)}`;
+    eventSource = new EventSource(url);
+
+    eventSource.onmessage = (message) => {
+      const data = parseSsePayload(message.data);
+      if (!data) {
+        return;
+      }
+
+      if (data.type === "event") {
+        relayEvent(data.event);
+        return;
+      }
+
+      if (data.type === "error") {
+        stopEventStream();
+        scheduleEventPoll();
+      }
+    };
+
+    eventSource.onerror = () => {
+      stopEventStream();
+      scheduleEventPoll();
+    };
+  }
+
+  function startMatchStream() {
+    stopMatchStream();
+    if (!activeAnonHash || sessionId || closed || typeof EventSource === "undefined") {
+      scheduleMatchPoll();
+      return;
+    }
+
+    const url = `/api/signal/await/stream?anonTokenHash=${encodeURIComponent(activeAnonHash)}`;
+    matchSource = new EventSource(url);
+
+    matchSource.onmessage = (message) => {
+      const data = parseSsePayload(message.data);
+      if (!data) {
+        return;
+      }
+
+      if (data.type === "matched" && data.sessionId) {
+        stopMatchStream();
+        sessionId = data.sessionId;
+        emit({ type: "matched", sessionId: data.sessionId, partnerLabel: "Unknown Soul" });
+        startEventStream();
+        return;
+      }
+
+      if (data.type === "error") {
+        stopMatchStream();
+        scheduleMatchPoll();
+      }
+    };
+
+    matchSource.onerror = () => {
+      stopMatchStream();
+      scheduleMatchPoll();
+    };
   }
 
   async function pollEvents() {
@@ -77,57 +196,15 @@ export function createLiveSignalEngine(): SignalEngine {
       });
 
       for (const event of payload.events ?? []) {
-        if (event.event_type === "text") {
-          emit({
-            type: "message",
-            message: {
-              id: typeof event.payload.id === "string" ? event.payload.id : uid("msg"),
-              sender: "peer",
-              type: "text",
-              text: typeof event.payload.text === "string" ? event.payload.text : "",
-              createdAt: typeof event.payload.createdAt === "number" ? event.payload.createdAt : Date.now()
-            }
-          });
-          continue;
-        }
-
-        if (event.event_type === "typing") {
-          emit({ type: "typing", active: Boolean(event.payload.active) });
-          continue;
-        }
-
-        if (event.event_type === "voice-pulse") {
-          emit({
-            type: "message",
-            message: {
-              id: uid("msg"),
-              sender: "peer",
-              type: "voice",
-              text: typeof event.payload.text === "string" ? event.payload.text : "Voice burst received.",
-              createdAt: typeof event.payload.createdAt === "number" ? event.payload.createdAt : Date.now()
-            }
-          });
-          continue;
-        }
-
-        if (event.event_type === "disconnect") {
-          resetPolling();
-          sessionId = "";
-          emit({ type: "disconnected", reason: typeof event.payload.reason === "string" ? event.payload.reason : "The remote signal closed." });
+        relayEvent(event);
+        if (!sessionId) {
           return;
-        }
-
-        if (["webrtc-request-offer", "webrtc-offer", "webrtc-answer", "webrtc-ice", "webrtc-hangup"].includes(event.event_type)) {
-          const signal = event.payload.signal as WebRtcSignalMessage | undefined;
-          if (signal) {
-            emit({ type: "webrtc-signal", signal });
-          }
         }
       }
 
       scheduleEventPoll();
     } catch (error) {
-      resetPolling();
+      resetStreams();
       const reason = error instanceof Error ? error.message : "Secure event relay failed.";
       emit({ type: "disconnected", reason });
     }
@@ -147,13 +224,11 @@ export function createLiveSignalEngine(): SignalEngine {
         stopMatchPolling();
         sessionId = payload.sessionId;
         emit({ type: "matched", sessionId: payload.sessionId, partnerLabel: "Unknown Soul" });
-        scheduleEventPoll(200);
+        startEventStream();
         return;
       }
 
-      matchPollTimer = setTimeout(() => {
-        void pollForMatch();
-      }, 2200);
+      scheduleMatchPoll();
     } catch (error) {
       const reason = error instanceof Error ? error.message : "Could not await a signal match.";
       emit({ type: "disconnected", reason });
@@ -168,7 +243,7 @@ export function createLiveSignalEngine(): SignalEngine {
     async connect(options: EngineConnectOptions): Promise<EngineConnectResult> {
       closed = false;
       activeAnonHash = options.anonId;
-      resetPolling();
+      resetStreams();
 
       const payload = await postJson<{ status: "matched" | "queued"; sessionId?: string }>("/api/signal/connect", {
         anonTokenHash: options.anonId,
@@ -179,14 +254,12 @@ export function createLiveSignalEngine(): SignalEngine {
 
       if (payload.status === "matched" && payload.sessionId) {
         sessionId = payload.sessionId;
-        scheduleEventPoll(200);
+        startEventStream();
         return { status: "matched", sessionId: payload.sessionId, partnerLabel: "Unknown Soul" };
       }
 
       emit({ type: "queued" });
-      matchPollTimer = setTimeout(() => {
-        void pollForMatch();
-      }, 2200);
+      startMatchStream();
       return { status: "queued" };
     },
     async sendText(text: string): Promise<EngineSendTextResult> {
@@ -347,7 +420,7 @@ export function createLiveSignalEngine(): SignalEngine {
     },
     async disconnect(reason?: string) {
       closed = true;
-      resetPolling();
+      resetStreams();
 
       try {
         await postJson<{ status: string }>("/api/signal/disconnect", {

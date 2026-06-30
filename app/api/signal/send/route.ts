@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimit } from "@/lib/server/rate-limit";
 import { relaySignalPayload, SignalRelayKind } from "@/lib/server/signal-service";
 import { WebRtcSignalMessage } from "@/lib/types";
 
@@ -15,6 +16,11 @@ export async function POST(request: NextRequest) {
 
     if (!sessionId || !anonTokenHash || !kind) {
       return NextResponse.json({ reason: "Invalid signal relay payload." }, { status: 400 });
+    }
+
+    const rate = enforceRateLimit(request, "signal-send", 40, 60_000, anonTokenHash);
+    if (!rate.ok) {
+      return NextResponse.json({ reason: "Too many messages. Slow down." }, { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } });
     }
 
     const result = await relaySignalPayload({

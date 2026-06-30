@@ -1,3 +1,6 @@
+"use client";
+
+import { useI18n } from "@/components/locale-provider";
 import { VoiceIncidentEvent } from "@/lib/types";
 
 interface VoiceIncidentTimelineProps {
@@ -5,13 +8,14 @@ interface VoiceIncidentTimelineProps {
 }
 
 export function VoiceIncidentTimeline({ incidents }: VoiceIncidentTimelineProps) {
+  const { m } = useI18n();
   const recent = incidents.slice(-6).reverse();
 
   return (
     <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-      <div className="mb-3 text-[10px] uppercase tracking-[0.22em] text-white/35">Incident timeline</div>
+      <div className="mb-3 text-[10px] uppercase tracking-[0.22em] text-white/35">{m.voice.incident.title}</div>
       {recent.length === 0 ? (
-        <div className="text-sm text-white/40">No transport incidents recorded in this session.</div>
+        <div className="text-sm text-white/40">{m.voice.incident.empty}</div>
       ) : (
         <div className="space-y-3">
           {recent.map((incident, index) => (

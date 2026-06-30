@@ -1,7 +1,7 @@
 export type ModeOption = "listen" | "talk" | "both";
 export type ToneOption = "calm" | "deep" | "funny" | "debate" | "random";
 export type FrequencyKind = "daily" | "random";
-export type AppStage = "landing" | "frequency" | "intent" | "connecting" | "waiting" | "chat" | "lost";
+export type AppStage = "landing" | "onboarding" | "frequency" | "intent" | "connecting" | "waiting" | "chat" | "lost";
 
 export interface Frequency {
   id: string;

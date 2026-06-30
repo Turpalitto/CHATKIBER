@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useI18n } from "@/components/locale-provider";
+import { formatMessage } from "@/lib/i18n";
 import { ModerationResult, VoiceDiagnosticsShareResult, VoiceQosExportResult, VoiceQosRecommendationsResult, VoiceQosReportResult, VoiceQosSample, WebRtcSignalMessage } from "@/lib/types";
 import {
   getDiagnosticsExpandedPreference,
@@ -25,34 +27,6 @@ interface VoiceLinkPanelProps {
   onSystemNotice: (text: string) => void;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  disabled: "Live mode unavailable",
-  idle: "Voice channel idle",
-  priming: "Preparing microphone...",
-  negotiating: "Negotiating secure voice link...",
-  connected: "Voice channel connected",
-  reconnecting: "Reconnecting voice link...",
-  ready: "Mic ready — waiting for signal lock",
-  error: "Voice link error"
-};
-
-const PRESENCE_LABELS: Record<string, string> = {
-  offline: "Offline",
-  idle: "Idle",
-  tuning: "Tuning",
-  listening: "Listening",
-  speaking: "Speaking",
-  reconnecting: "Reconnecting"
-};
-
-const PERMISSION_LABELS: Record<string, string> = {
-  unknown: "Unknown",
-  prompt: "Prompt",
-  granted: "Granted",
-  denied: "Denied",
-  unsupported: "Unsupported"
-};
-
 function formatMetric(value: number | null, suffix: string) {
   if (value === null || Number.isNaN(value)) {
     return "—";
@@ -61,9 +35,9 @@ function formatMetric(value: number | null, suffix: string) {
   return `${value.toFixed(1)}${suffix}`;
 }
 
-function qualityLabel(rtt: number | null, jitter: number | null, loss: number | null) {
+function qualityKey(rtt: number | null, jitter: number | null, loss: number | null) {
   if (rtt === null && jitter === null && loss === null) {
-    return "Unknown";
+    return "unknown";
   }
 
   const safeRtt = rtt ?? 999;
@@ -71,25 +45,27 @@ function qualityLabel(rtt: number | null, jitter: number | null, loss: number | 
   const safeLoss = loss ?? 999;
 
   if (safeRtt < 90 && safeJitter < 12 && safeLoss < 3) {
-    return "Stable";
+    return "stable";
   }
 
   if (safeRtt < 180 && safeJitter < 30 && safeLoss < 10) {
-    return "Variable";
+    return "variable";
   }
 
-  return "Degraded";
+  return "degraded";
 }
 
-function turnLabel(hasTurnConfigured: boolean, relayDetected: boolean) {
+function turnKey(hasTurnConfigured: boolean, relayDetected: boolean) {
   if (!hasTurnConfigured) {
-    return "No TURN configured";
+    return "notConfigured";
   }
 
-  return relayDetected ? "TURN relay active" : "TURN configured";
+  return relayDetected ? "relayActive" : "configured";
 }
 
 export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModerateTranscript, onReportQosSample, onLoadQosHistory, onFetchRecommendations, onExportDiagnostics, onCreateShare, onSystemNotice }: VoiceLinkPanelProps) {
+  const { m } = useI18n();
+  const p = m.voice.panel;
   const voice = useWebRtcGroundwork({
     enabled,
     incomingSignal,
@@ -131,10 +107,15 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
     }
 
     if (voice.qosAlerts.length > 0 || voice.serverRecommendations.length > 0) {
-      onSystemNotice(topAlert || (topRecommendation ? `Voice suggestion: ${topRecommendation}.` : "Voice quality changed."));
+      onSystemNotice(
+        topAlert ||
+          (topRecommendation
+            ? formatMessage(m.system.voiceSuggestion, { title: topRecommendation })
+            : m.system.voiceQualityChanged)
+      );
       noticeKeyRef.current = nextKey;
     }
-  }, [onSystemNotice, voice.healthScore, voice.qosAlerts, voice.serverRecommendations, voice.status]);
+  }, [m.system.voiceQualityChanged, m.system.voiceSuggestion, onSystemNotice, voice.healthScore, voice.qosAlerts, voice.serverRecommendations, voice.status]);
 
   const exportDiagnostics = async () => {
     setExporting(true);
@@ -160,51 +141,50 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
         if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
           await navigator.clipboard.writeText(payload.url).catch(() => undefined);
         }
-        onSystemNotice("Diagnostics share link copied to clipboard.");
+        onSystemNotice(m.system.diagnosticsCopied);
       }
     } finally {
       setSharing(false);
     }
   };
 
-  const actionLabel = voice.status === "connected"
-    ? "Refresh voice link"
-    : voice.status === "reconnecting"
-      ? "Voice recovering..."
-      : "Enable live voice";
-
+  const actionLabel =
+    voice.status === "connected"
+      ? p.refreshVoice
+      : voice.status === "reconnecting"
+        ? p.voiceRecovering
+        : p.enableLiveVoice;
   const actionDisabled = !enabled || voice.status === "priming" || voice.status === "negotiating";
-  const networkQuality = qualityLabel(
+  const networkQualityKey = qualityKey(
     voice.diagnostics.roundTripTimeMs,
     voice.diagnostics.jitterMs,
     voice.diagnostics.packetsLost
   );
-  const turnStatus = turnLabel(
+  const networkQuality = m.voice.quality[networkQualityKey] ?? networkQualityKey;
+  const turnStatusKey = turnKey(
     voice.iceConfigSummary.hasTurnConfigured,
     voice.diagnostics.localCandidateType === "relay" || voice.diagnostics.remoteCandidateType === "relay"
   );
+  const turnStatus = m.voice.turn[turnStatusKey as keyof typeof m.voice.turn] ?? turnStatusKey;
 
   return (
     <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
-      <p className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/40">Voice link live</p>
-      <h3 className="display-font mt-2 text-lg text-white">Production voice polish.</h3>
-      <p className="mt-3 text-sm leading-7 text-white/58">
-        {enabled
-          ? "Voice now remembers your devices, supports manual recovery, exposes TURN-ready transport health, and offers compact mobile diagnostics."
-          : "Enable live mode with server env to test secure signaling and negotiated audio."}
-      </p>
+      <p className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/40">{p.eyebrow}</p>
+      <h3 className="display-font mt-2 text-lg text-white">{p.title}</h3>
+      <p className="mt-3 text-sm leading-7 text-white/58">{enabled ? p.liveEnabled : p.liveDisabled}</p>
 
       <div className="mt-4 rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-xs uppercase tracking-[0.22em] text-white/58">
-        Status: <span className="text-cyan-100/85">{STATUS_LABELS[voice.status] ?? voice.status}</span>
+        {p.statusPrefix}{" "}
+        <span className="text-cyan-100/85">{m.voice.status[voice.status] ?? voice.status}</span>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-white/54">
         <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-          <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Health score</div>
+          <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.healthScore}</div>
           <div className="mt-1 text-lg text-white/88">{voice.healthScore}</div>
         </div>
         <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-          <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Server alerts</div>
+          <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.serverAlerts}</div>
           <div className="mt-1 text-white/82">{voice.qosAlerts.length}</div>
         </div>
       </div>
@@ -229,7 +209,7 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-xs text-white/56">
-          <div className="mb-2 uppercase tracking-[0.22em] text-white/34">Input device</div>
+          <div className="mb-2 uppercase tracking-[0.22em] text-white/34">{p.inputDevice}</div>
           <select
             value={voice.selectedInputDeviceId}
             onChange={(event) => void voice.selectInputDevice(event.target.value)}
@@ -244,7 +224,7 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
         </label>
 
         <label className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-xs text-white/56">
-          <div className="mb-2 uppercase tracking-[0.22em] text-white/34">Output device</div>
+          <div className="mb-2 uppercase tracking-[0.22em] text-white/34">{p.outputDevice}</div>
           <select
             value={voice.selectedOutputDeviceId}
             onChange={(event) => void voice.selectOutputDevice(event.target.value)}
@@ -263,7 +243,7 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-xs text-white/56">
           <div className="mb-2 flex items-center justify-between uppercase tracking-[0.22em] text-white/34">
-            <span>Mic gain</span>
+            <span>{p.micGain}</span>
             <span>{voice.inputGain.toFixed(2)}×</span>
           </div>
           <input
@@ -279,7 +259,7 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
 
         <label className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-xs text-white/56">
           <div className="mb-2 flex items-center justify-between uppercase tracking-[0.22em] text-white/34">
-            <span>Output volume</span>
+            <span>{p.outputVolume}</span>
             <span>{Math.round(voice.outputVolume * 100)}%</span>
           </div>
           <input
@@ -300,7 +280,7 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
           onClick={() => void voice.testInputDevice()}
           className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.26em] text-white/72 transition hover:border-cyan-300/20 hover:text-cyan-100"
         >
-          {voice.testingInput ? "Testing mic..." : "Test mic"}
+          {voice.testingInput ? p.testingMic : p.testMic}
         </button>
         <button
           type="button"
@@ -308,16 +288,16 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
           disabled={!voice.outputRoutingSupported && voice.outputDevices.length === 0}
           className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.26em] text-white/72 transition hover:border-cyan-300/20 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {voice.testingOutput ? "Testing output..." : "Test speaker"}
+          {voice.testingOutput ? p.testingOutput : p.testSpeaker}
         </button>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 text-xs uppercase tracking-[0.18em]">
         <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-white/58">
-          You: <span className="text-cyan-100/85">{PRESENCE_LABELS[voice.localPresence] ?? voice.localPresence}</span>
+          {p.you} <span className="text-cyan-100/85">{m.voice.presence[voice.localPresence] ?? voice.localPresence}</span>
         </div>
         <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-white/58">
-          Peer: <span className="text-violet-100/85">{PRESENCE_LABELS[voice.remotePresence] ?? voice.remotePresence}</span>
+          {p.peer} <span className="text-violet-100/85">{m.voice.presence[voice.remotePresence] ?? voice.remotePresence}</span>
         </div>
       </div>
 
@@ -338,7 +318,7 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
             disabled={!enabled || voice.status === "priming"}
             className="rounded-full border border-violet-400/20 bg-violet-400/10 px-4 py-3 text-xs uppercase tracking-[0.26em] text-violet-50 transition hover:bg-violet-400/14 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Retry voice
+            {p.retryVoice}
           </button>
           <button
             type="button"
@@ -346,7 +326,7 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
             disabled={!enabled || !voice.micReady}
             className="rounded-full border border-orange-300/20 bg-orange-300/10 px-4 py-3 text-xs uppercase tracking-[0.26em] text-orange-50 transition hover:bg-orange-300/14 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Force ICE restart
+            {p.forceIceRestart}
           </button>
         </div>
 
@@ -367,13 +347,13 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
         >
           <div className="mb-3 flex items-center justify-between gap-4">
             <div>
-              <div className="display-font text-sm text-white">Hold to Talk</div>
+              <div className="display-font text-sm text-white">{p.holdToTalk}</div>
               <div className="mt-1 text-xs uppercase tracking-[0.24em] text-white/45">
                 {voice.transmitting
-                  ? "Live transmitting..."
+                  ? p.liveTransmitting
                   : voice.queuedTransmit
-                    ? "Queued — will transmit on lock"
-                    : "Push-to-talk over the voice channel"}
+                    ? p.queuedTransmit
+                    : p.pttOverChannel}
               </div>
             </div>
             <span className={`h-3 w-3 rounded-full ${voice.transmitting ? "bg-cyan-300 shadow-[0_0_18px_rgba(91,247,255,0.9)]" : voice.queuedTransmit ? "bg-violet-300 shadow-[0_0_18px_rgba(143,92,255,0.8)]" : "bg-white/15"}`} />
@@ -387,19 +367,19 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
           disabled={!voice.micReady && voice.status !== "connected" && voice.status !== "reconnecting"}
           className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.26em] text-white/72 transition hover:border-cyan-300/20 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Disable voice
+          {p.disableVoice}
         </button>
       </div>
 
       <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
         <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.22em] text-white/34">
-          <span>Local input activity</span>
-          <span>{PRESENCE_LABELS[voice.localPresence] ?? voice.localPresence}</span>
+          <span>{p.localActivity}</span>
+          <span>{m.voice.presence[voice.localPresence] ?? voice.localPresence}</span>
         </div>
         <Waveform active={voice.micReady || voice.transmitting || voice.queuedTransmit} level={voice.level} />
         <div className="mt-3 mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.22em] text-white/34">
-          <span>Remote activity</span>
-          <span>{PRESENCE_LABELS[voice.remotePresence] ?? voice.remotePresence}</span>
+          <span>{p.remoteActivity}</span>
+          <span>{m.voice.presence[voice.remotePresence] ?? voice.remotePresence}</span>
         </div>
         <Waveform active={voice.remoteReady} level={voice.remoteLevel} />
       </div>
@@ -407,7 +387,7 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
       <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-xs text-white/56">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="uppercase tracking-[0.22em] text-white/34">Network quality</div>
+            <div className="uppercase tracking-[0.22em] text-white/34">{p.networkQuality}</div>
             <div className="mt-1 text-white/82">{networkQuality}</div>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
@@ -416,7 +396,7 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
               onClick={toggleDiagnostics}
               className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.22em] text-white/70 transition hover:border-cyan-300/20 hover:text-cyan-100"
             >
-              {showDiagnostics ? "Hide diagnostics" : "Show diagnostics"}
+              {showDiagnostics ? p.hideDiagnostics : p.showDiagnostics}
             </button>
             <button
               type="button"
@@ -424,7 +404,7 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
               disabled={sharing}
               className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.22em] text-white/70 transition hover:border-cyan-300/20 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {sharing ? "Sharing..." : "Copy share link"}
+              {sharing ? p.sharing : p.copyShareLink}
             </button>
             <button
               type="button"
@@ -432,7 +412,7 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
               disabled={exporting}
               className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.22em] text-white/70 transition hover:border-cyan-300/20 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {exporting ? "Exporting..." : "Export JSON"}
+              {exporting ? p.exporting : p.exportJson}
             </button>
           </div>
         </div>
@@ -440,8 +420,8 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
 
       <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-white/54">
         <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-          <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Permission</div>
-          <div className="mt-1 text-white/82">{PERMISSION_LABELS[voice.permissionState] ?? voice.permissionState}</div>
+          <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.permission}</div>
+          <div className="mt-1 text-white/82">{m.voice.permission[voice.permissionState] ?? voice.permissionState}</div>
         </div>
         <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
           <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">TURN</div>
@@ -452,11 +432,11 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
       {!showDiagnostics ? (
         <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-white/54 sm:hidden">
           <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">RTT</div>
+            <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.rtt}</div>
             <div className="mt-1 text-white/82">{formatMetric(voice.diagnostics.roundTripTimeMs, " ms")}</div>
           </div>
           <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Reconnects</div>
+            <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.reconnects}</div>
             <div className="mt-1 text-white/82">{voice.diagnostics.reconnectAttempts}</div>
           </div>
         </div>
@@ -466,28 +446,28 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
         <>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <VoiceHistoryChart
-              title="RTT history"
+              title={p.rttHistory}
               samples={voice.qosHistory}
               pick={(sample) => sample.roundTripTimeMs}
               unit="ms"
               colorClass="bg-cyan-300"
             />
             <VoiceHistoryChart
-              title="Jitter history"
+              title={p.jitterHistory}
               samples={voice.qosHistory}
               pick={(sample) => sample.jitterMs}
               unit="ms"
               colorClass="bg-violet-300"
             />
             <VoiceHistoryChart
-              title="Outbound history"
+              title={p.outboundHistory}
               samples={voice.qosHistory}
               pick={(sample) => sample.outboundKbps}
               unit="kbps"
               colorClass="bg-orange-300"
             />
             <VoiceHistoryChart
-              title="Inbound history"
+              title={p.inboundHistory}
               samples={voice.qosHistory}
               pick={(sample) => sample.inboundKbps}
               unit="kbps"
@@ -497,35 +477,35 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
 
           <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-white/54">
             <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Network</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.network}</div>
               <div className="mt-1 text-white/82">{networkQuality}</div>
             </div>
             <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Reconnects</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.reconnects}</div>
               <div className="mt-1 text-white/82">{voice.diagnostics.reconnectAttempts}</div>
             </div>
             <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">RTT</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.rtt}</div>
               <div className="mt-1 text-white/82">{formatMetric(voice.diagnostics.roundTripTimeMs, " ms")}</div>
             </div>
             <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Jitter</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.jitter}</div>
               <div className="mt-1 text-white/82">{formatMetric(voice.diagnostics.jitterMs, " ms")}</div>
             </div>
             <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Outbound</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.outbound}</div>
               <div className="mt-1 text-white/82">{formatMetric(voice.diagnostics.outboundKbps, " kbps")}</div>
             </div>
             <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Inbound</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.inbound}</div>
               <div className="mt-1 text-white/82">{formatMetric(voice.diagnostics.inboundKbps, " kbps")}</div>
             </div>
             <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Packets lost</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.packetsLost}</div>
               <div className="mt-1 text-white/82">{voice.diagnostics.packetsLost ?? "—"}</div>
             </div>
             <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">ICE path</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.icePath}</div>
               <div className="mt-1 text-white/82">
                 {voice.diagnostics.localCandidateType ?? "—"} → {voice.diagnostics.remoteCandidateType ?? "—"}
               </div>
@@ -533,27 +513,49 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
           </div>
 
           <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-xs leading-6 text-white/48">
-            <div>Connection: <span className="text-white/76">{voice.diagnostics.connectionState}</span></div>
-            <div>ICE: <span className="text-white/76">{voice.diagnostics.iceConnectionState}</span></div>
-            <div>Signaling: <span className="text-white/76">{voice.diagnostics.signalingState}</span></div>
-            <div>ICE config source: <span className="text-white/76">{voice.iceConfigSummary.source}</span></div>
-            <div>Configured STUN servers: <span className="text-white/76">{voice.iceConfigSummary.stunCount}</span></div>
-            <div>Configured TURN servers: <span className="text-white/76">{voice.iceConfigSummary.turnCount}</span></div>
+            <div>
+              {p.connection}: <span className="text-white/76">{voice.diagnostics.connectionState}</span>
+            </div>
+            <div>
+              {p.ice}: <span className="text-white/76">{voice.diagnostics.iceConnectionState}</span>
+            </div>
+            <div>
+              {p.signaling}: <span className="text-white/76">{voice.diagnostics.signalingState}</span>
+            </div>
+            <div>
+              {p.iceConfigSource}: <span className="text-white/76">{voice.iceConfigSummary.source}</span>
+            </div>
+            <div>
+              {p.stunServers}: <span className="text-white/76">{voice.iceConfigSummary.stunCount}</span>
+            </div>
+            <div>
+              {p.turnServers}: <span className="text-white/76">{voice.iceConfigSummary.turnCount}</span>
+            </div>
           </div>
         </>
       ) : null}
 
       <div className="mt-4 grid gap-2 text-xs text-white/48">
-        <div>Mic primed: {voice.micReady ? "yes" : "no"}</div>
-        <div>Remote ready: {voice.remoteReady ? "yes" : "no"}</div>
-        <div>Browser support: {voice.supported ? "yes" : "no"}</div>
-        <div>Output routing: {voice.outputRoutingSupported ? "available" : "browser default only"}</div>
-        <div>Speech moderation transcript: {voice.speechSupported ? "available" : "browser fallback only"}</div>
+        <div>
+          {p.micPrimed}: {voice.micReady ? p.yes : p.no}
+        </div>
+        <div>
+          {p.remoteReady}: {voice.remoteReady ? p.yes : p.no}
+        </div>
+        <div>
+          {p.browserSupport}: {voice.supported ? p.yes : p.no}
+        </div>
+        <div>
+          {p.outputRouting}: {voice.outputRoutingSupported ? p.available : p.browserDefaultOnly}
+        </div>
+        <div>
+          {p.speechModeration}: {voice.speechSupported ? p.available : p.browserFallbackOnly}
+        </div>
       </div>
 
       {voice.serverRecommendations.length > 0 ? (
         <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-xs leading-6 text-white/58">
-          <div className="mb-2 text-[10px] uppercase tracking-[0.22em] text-white/35">Server recommendations</div>
+          <div className="mb-2 text-[10px] uppercase tracking-[0.22em] text-white/35">{p.serverRecommendations}</div>
           <ul className="space-y-2">
             {voice.serverRecommendations.slice(0, 3).map((recommendation) => (
               <li key={recommendation.id}>
@@ -570,17 +572,15 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
 
       {voice.lastTranscript ? (
         <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-xs leading-6 text-white/52">
-          Last moderated voice transcript: <span className="text-white/72">{voice.lastTranscript}</span>
+          {p.lastTranscript} <span className="text-white/72">{voice.lastTranscript}</span>
         </div>
       ) : null}
 
       {voice.error ? (
         <div className="mt-4 rounded-2xl border border-red-400/18 bg-red-400/10 px-4 py-3 text-xs leading-6 text-red-100/90">
-          <div className="uppercase tracking-[0.22em] text-red-100/70">Voice issue</div>
+          <div className="uppercase tracking-[0.22em] text-red-100/70">{p.voiceIssue}</div>
           <div className="mt-2">{voice.error}</div>
-          {voice.permissionState === "denied" ? (
-            <div className="mt-2 text-red-50/80">Microphone permission is denied. Re-enable it in the browser site settings, then retry the voice link.</div>
-          ) : null}
+          {voice.permissionState === "denied" ? <div className="mt-2 text-red-50/80">{p.micDenied}</div> : null}
         </div>
       ) : null}
 
@@ -596,7 +596,7 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
           outputRoutingSupported={voice.outputRoutingSupported}
           turnConfigured={voice.iceConfigSummary.hasTurnConfigured}
           turnRelaySatisfied={voice.diagnostics.localCandidateType === "relay" || voice.diagnostics.remoteCandidateType === "relay"}
-          networkQuality={networkQuality}
+          networkQualityKey={networkQualityKey}
           onEnableVoice={() => void voice.enableVoice()}
           onRetryVoice={() => void voice.retryVoiceLink()}
           onForceIceRestart={() => void voice.forceIceRestart()}

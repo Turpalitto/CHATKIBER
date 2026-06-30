@@ -196,8 +196,57 @@ export function useWebRtcGroundwork({ enabled, incomingSignal, onSendSignal, onM
   }, [enabled, micReady]);
 
   const speechSupported = useMemo(() => Boolean(getSpeechRecognitionCtor()), []);
-  const iceServers = useMemo(() => getSignalIceServers(), []);
-  const iceConfigSummary = useMemo<SignalIceConfigSummary>(() => getSignalIceConfigSummary(), []);
+  const [iceServers, setIceServers] = useState<RTCIceServer[]>(() => getSignalIceServers());
+  const [iceConfigSummary, setIceConfigSummary] = useState<SignalIceConfigSummary>(() => getSignalIceConfigSummary());
+  const liveIceEnabled = process.env.NEXT_PUBLIC_SIGNAL_LIVE === "1";
+
+  useEffect(() => {
+    if (!enabled || !liveIceEnabled) {
+      setIceServers(getSignalIceServers());
+      setIceConfigSummary(getSignalIceConfigSummary());
+      return;
+    }
+
+    let active = true;
+
+    void fetch("/api/signal/ice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    })
+      .then((response) => response.json())
+      .then((payload: { iceServers?: RTCIceServer[]; summary?: { hasTurnConfigured: boolean; hasStunConfigured: boolean; stunCount: number; turnCount: number } }) => {
+        if (!active) {
+          return;
+        }
+
+        if (Array.isArray(payload.iceServers) && payload.iceServers.length > 0) {
+          setIceServers(payload.iceServers);
+        }
+
+        if (payload.summary) {
+          setIceConfigSummary({
+            source: "env",
+            hasTurnConfigured: payload.summary.hasTurnConfigured,
+            hasStunConfigured: payload.summary.hasStunConfigured,
+            stunCount: payload.summary.stunCount,
+            turnCount: payload.summary.turnCount
+          });
+        }
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+
+        setIceServers(getSignalIceServers());
+        setIceConfigSummary(getSignalIceConfigSummary());
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [enabled, liveIceEnabled]);
   const outputRoutingSupported = useMemo(() => {
     if (typeof window === "undefined") {
       return false;

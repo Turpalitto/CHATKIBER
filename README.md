@@ -62,6 +62,7 @@ Secure server-backed mode:
 - server moderates text payloads again
 - server stores only short-lived relay events
 - client polls events and deletes them after consumption
+- **SSE streams** (`/api/signal/events/stream`, `/api/signal/await/stream`) with POST polling fallback
 - WebRTC audio negotiation runs over secure signaling messages
 
 ## Project structure
@@ -76,6 +77,9 @@ app/
       connect/route.ts
       disconnect/route.ts
       events/route.ts
+      events/stream/route.ts
+      await/stream/route.ts
+      ice/route.ts
       send/route.ts
       voice-moderate/route.ts
   globals.css
@@ -132,11 +136,22 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_SIGNAL_LIVE=0
+
+# Client ICE (mock/dev)
 NEXT_PUBLIC_SIGNAL_STUN_URLS=stun:stun.l.google.com:19302
 NEXT_PUBLIC_SIGNAL_TURN_URLS=
 NEXT_PUBLIC_SIGNAL_TURN_USERNAME=
 NEXT_PUBLIC_SIGNAL_TURN_CREDENTIAL=
 NEXT_PUBLIC_SIGNAL_ICE_SERVERS_JSON=
+
+# Server ICE (live/production — keep secrets server-side)
+SIGNAL_STUN_URLS=stun:stun.l.google.com:19302
+SIGNAL_TURN_URLS=
+SIGNAL_TURN_USERNAME=
+SIGNAL_TURN_CREDENTIAL=
+SIGNAL_TURN_SECRET=
+SIGNAL_ICE_SERVERS_JSON=
+
 SIGNAL_ENFORCE_TURN_RELAY=0
 SIGNAL_DEBUG_EXPORT_TOKEN=
 ```
@@ -154,8 +169,9 @@ Open `http://localhost:3000`.
 
 ```bash
 npm run lint
+npm run typecheck
+npm run test
 npm run build
-npx tsc --noEmit
 npm audit
 ```
 
@@ -190,6 +206,10 @@ Server routes:
 - `/api/signal/await`
 - `/api/signal/send`
 - `/api/signal/events`
+- `/api/signal/events/stream` (SSE)
+- `/api/signal/await/stream` (SSE match wait)
+- `/api/signal/ice` (server-side TURN credentials)
+- `/api/health`
 - `/api/signal/disconnect`
 - `/api/signal/voice-moderate`
 - `/api/signal/voice-qos/report`
@@ -267,6 +287,33 @@ supabase/functions/signal-router/index.ts
 ```
 
 Use it if you want to migrate signaling away from Next API routes into a separate Supabase-hosted layer.
+
+## Supabase setup (live matching)
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. Open **SQL Editor** and run the full script from `supabase/schema.sql`.
+3. Copy project URL and keys into env:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` (server only — never expose to the client)
+4. Set `NEXT_PUBLIC_SIGNAL_LIVE=1` and restart the app.
+5. Verify: `GET /api/health` should return `{ liveEnabled: true, supabase: true }`.
+
+## Vercel deploy
+
+1. Push to GitHub (`Turpalitto/CHATKIBER`).
+2. Import the repo in [Vercel](https://vercel.com) as a Next.js project.
+3. Add the same env vars from `.env.example` in **Project → Settings → Environment Variables**.
+4. For voice behind strict NAT, configure TURN on the server:
+   - `SIGNAL_TURN_URLS=turn:your-turn.example.com:3478`
+   - `SIGNAL_TURN_SECRET=...` (coturn `use-auth-secret`) **or** static `SIGNAL_TURN_USERNAME` / `SIGNAL_TURN_CREDENTIAL`
+5. Deploy. Live matching and SSE streams work on Vercel serverless (Node runtime).
+
+## TURN notes
+
+- In **live mode**, the client fetches ICE servers from `/api/signal/ice` so TURN secrets stay server-side.
+- `SIGNAL_TURN_SECRET` generates time-limited credentials compatible with coturn `use-auth-secret`.
+- Set `SIGNAL_ENFORCE_TURN_RELAY=1` to reject voice sessions that never establish a TURN relay when TURN is configured.
 
 ## Notes
 

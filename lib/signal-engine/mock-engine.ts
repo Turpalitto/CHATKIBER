@@ -1,67 +1,35 @@
+import { getMessages, Locale } from "@/lib/i18n";
 import { moderateMessage } from "@/lib/moderation";
-import { PARTNER_LABELS } from "@/lib/constants";
 import { sample, uid, wait } from "@/lib/utils";
 import { Message, VoiceDiagnosticsShareResult, VoiceQosExportResult, VoiceQosRecommendationsResult, VoiceQosReportResult, VoiceQosSample, WebRtcSignalMessage } from "@/lib/types";
 import { EngineConnectOptions, EngineEvent, EngineSendTextResult, SignalEngine } from "./index";
 
-function buildOpeningLine(prompt: string) {
-  const variants = [
-    `I keep thinking about this: ${prompt.toLowerCase()}`,
-    `That prompt hit me immediately. ${prompt}`,
-    `Maybe we can start here — ${prompt}`,
-    `I wasn't expecting that question tonight: ${prompt}`
-  ];
-
-  return sample(variants);
+function buildOpeningLine(prompt: string, locale: Locale) {
+  return sample(getMessages(locale).mock.openingVariants(prompt));
 }
 
-function buildReply(text: string) {
-  const softReplies = [
-    "That's more honest than most people would say out loud.",
-    "I felt the pause in that. In a good way.",
-    "That sounds like something you learned the hard way.",
-    "Interesting. What part of that matters most to you now?",
-    "I can see why that stayed with you."
-  ];
+function buildReply(text: string, locale: Locale) {
+  const mock = getMessages(locale).mock;
 
-  const deepReplies = [
-    "Do you think that changed who you are, or only how you move through the world?",
-    "Sometimes the decision matters less than the version of us who made it.",
-    "That makes me wonder what you had to let go of to become this person.",
-    "There's a strange tenderness in the way you said that.",
-    "Would your younger self recognize that answer?"
-  ];
-
-  const debateReplies = [
-    "I agree with the feeling, but not necessarily the conclusion.",
-    "Maybe the harder question is whether people really change, or only rename their patterns.",
-    "I'm not fully convinced. What makes you so sure?"
-  ];
-
-  const funnyReplies = [
-    "That's either wisdom or exhaustion pretending to be wisdom.",
-    "Honestly? That sounds suspiciously like character development.",
-    "A deeply cinematic answer. I respect it."
-  ];
-
-  if (/why|how|because|change|fear|life|love|alone|work|future/i.test(text)) {
-    return sample(deepReplies);
+  if (/why|how|because|change|fear|life|love|alone|work|future|почему|как|потому|измен|страх|жизн|люб|один|работ|будущ/i.test(text)) {
+    return sample(mock.deepReplies);
   }
 
-  if (/disagree|debate|wrong|actually/i.test(text)) {
-    return sample(debateReplies);
+  if (/disagree|debate|wrong|actually|не соглас|спор|ошиб|на самом деле/i.test(text)) {
+    return sample(mock.debateReplies);
   }
 
-  if (/lol|haha|funny|joke/i.test(text)) {
-    return sample(funnyReplies);
+  if (/lol|haha|funny|joke|лол|аха|смешн|шутк/i.test(text)) {
+    return sample(mock.funnyReplies);
   }
 
-  return sample(softReplies);
+  return sample(mock.softReplies);
 }
 
 export function createMockSignalEngine(): SignalEngine {
   const listeners = new Set<(event: EngineEvent) => void>();
   let connected = false;
+  let locale: Locale = "en";
   let pendingTimers: Array<ReturnType<typeof setTimeout>> = [];
 
   function emit(event: EngineEvent) {
@@ -85,7 +53,9 @@ export function createMockSignalEngine(): SignalEngine {
     },
     async connect(options: EngineConnectOptions) {
       connected = true;
-      const partnerLabel = sample(PARTNER_LABELS);
+      locale = options.locale ?? "en";
+      const messages = getMessages(locale);
+      const partnerLabel = sample([...messages.partnerLabels]);
       const sessionId = uid("session");
 
       schedule(() => emit({ type: "typing", active: true }), 1200);
@@ -95,7 +65,7 @@ export function createMockSignalEngine(): SignalEngine {
           id: uid("msg"),
           sender: "peer",
           type: "text",
-          text: buildOpeningLine(options.frequency.prompt),
+          text: buildOpeningLine(options.frequency.prompt, locale),
           createdAt: Date.now()
         };
         emit({ type: "message", message });
@@ -106,7 +76,7 @@ export function createMockSignalEngine(): SignalEngine {
     },
     async sendText(text: string): Promise<EngineSendTextResult> {
       if (!connected) {
-        return { ok: false, reason: "No active signal." };
+        return { ok: false, reason: getMessages(locale).system.noActiveSignal };
       }
 
       emit({ type: "typing", active: true });
@@ -119,7 +89,7 @@ export function createMockSignalEngine(): SignalEngine {
             id: uid("msg"),
             sender: "peer",
             type: "text",
-            text: buildReply(text),
+            text: buildReply(text, locale),
             createdAt: Date.now()
           }
         });
@@ -132,6 +102,7 @@ export function createMockSignalEngine(): SignalEngine {
         return;
       }
 
+      const mock = getMessages(locale).mock;
       emit({ type: "typing", active: true });
       schedule(() => {
         emit({ type: "typing", active: false });
@@ -141,7 +112,7 @@ export function createMockSignalEngine(): SignalEngine {
             id: uid("msg"),
             sender: "peer",
             type: "voice",
-            text: level > 0.55 ? "You sounded certain. I heard that." : "That sounded quiet, but present.",
+            text: level > 0.55 ? mock.voiceStrong : mock.voiceSoft,
             createdAt: Date.now()
           }
         });
@@ -184,7 +155,7 @@ export function createMockSignalEngine(): SignalEngine {
       }
     },
     async moderateVoiceTranscript(transcript: string) {
-      return moderateMessage(transcript);
+      return moderateMessage(transcript, locale);
     },
     async reportVoiceQos(sample: VoiceQosSample): Promise<VoiceQosReportResult> {
       const turnRelaySatisfied = sample.localCandidateType === "relay" || sample.remoteCandidateType === "relay";

@@ -2,8 +2,10 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useI18n } from "@/components/locale-provider";
 import { Frequency, Message, ModerationResult, VoiceDiagnosticsShareResult, VoiceQosExportResult, VoiceQosRecommendationsResult, VoiceQosReportResult, VoiceQosSample, WebRtcSignalMessage } from "@/lib/types";
 import { HoldToTalk } from "./hold-to-talk";
+import { SessionTimer } from "./session-timer";
 import { VoiceLinkPanel } from "./voice-link-panel";
 
 interface ChatPanelProps {
@@ -11,6 +13,7 @@ interface ChatPanelProps {
   frequency: Frequency;
   messages: Message[];
   typing: boolean;
+  sessionStartedAt: number | null;
   latestWebRtcSignal: WebRtcSignalMessage | null;
   liveVoiceEnabled: boolean;
   onSendText: (text: string) => void | Promise<boolean> | boolean;
@@ -24,6 +27,7 @@ interface ChatPanelProps {
   onCreateVoiceDiagnosticsShare: () => Promise<VoiceDiagnosticsShareResult>;
   onVoiceSystemNotice: (text: string) => void;
   onEnd: () => void;
+  onSessionExpire: () => void;
 }
 
 export function ChatPanel({
@@ -31,6 +35,7 @@ export function ChatPanel({
   frequency,
   messages,
   typing,
+  sessionStartedAt,
   latestWebRtcSignal,
   liveVoiceEnabled,
   onSendText,
@@ -43,9 +48,12 @@ export function ChatPanel({
   onExportVoiceDiagnostics,
   onCreateVoiceDiagnosticsShare,
   onVoiceSystemNotice,
-  onEnd
+  onEnd,
+  onSessionExpire
 }: ChatPanelProps) {
+  const { m } = useI18n();
   const [value, setValue] = useState("");
+  const [showTools, setShowTools] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -71,28 +79,40 @@ export function ChatPanel({
   };
 
   return (
-    <div className="relative w-full max-w-5xl overflow-hidden rounded-[32px] signal-panel">
-      <div className="border-b border-white/8 px-5 py-4 sm:px-6 sm:py-5">
+    <div className="relative w-full max-w-5xl overflow-hidden rounded-[24px] signal-panel sm:rounded-[32px]">
+      <div className="border-b border-white/8 px-4 py-4 sm:px-6 sm:py-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[11px] uppercase tracking-[0.3em] text-cyan-100/45">{partnerLabel}</p>
-            <div className="mt-2 flex items-center gap-2 text-sm uppercase tracking-[0.26em] text-cyan-100/75">
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm uppercase tracking-[0.26em] text-cyan-100/75">
               <span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(91,247,255,0.9)]" />
-              CONNECTED
+              {m.chat.connected}
+              <SessionTimer startedAt={sessionStartedAt} onExpire={onSessionExpire} />
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onEnd}
-            className="rounded-full border border-red-400/18 bg-red-400/10 px-4 py-2 text-xs uppercase tracking-[0.24em] text-red-100 transition hover:bg-red-400/14"
-          >
-            End signal
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowTools((current) => !current)}
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[10px] uppercase tracking-[0.22em] text-white/70 transition hover:border-cyan-300/20 hover:text-cyan-100 lg:hidden"
+            >
+              {showTools ? m.chat.hideTools : m.chat.showTools}
+            </button>
+            <button
+              type="button"
+              onClick={onEnd}
+              className="rounded-full border border-red-400/18 bg-red-400/10 px-4 py-2 text-xs uppercase tracking-[0.24em] text-red-100 transition hover:bg-red-400/14"
+            >
+              {m.chat.endSignal}
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-white/70">
           <span className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/40">
-            {frequency.kind === "daily" ? `Frequency #${frequency.number}` : "Random Signal"}
+            {frequency.kind === "daily"
+              ? `${m.frequency.frequencyLabel} #${frequency.number}`
+              : m.frequency.randomSignal}
           </span>
           <p className="mt-2 leading-6">{frequency.prompt}</p>
         </div>
@@ -100,7 +120,7 @@ export function ChatPanel({
 
       <div className="grid min-h-[70vh] grid-rows-[1fr_auto] lg:grid-cols-[minmax(0,1fr)_320px] lg:grid-rows-1">
         <div className="flex min-h-0 flex-col border-b border-white/8 lg:border-b-0 lg:border-r">
-          <div ref={scrollRef} className="scroll-thin flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6">
+          <div ref={scrollRef} className="scroll-thin max-h-[52vh] flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:max-h-none sm:px-6">
             <AnimatePresence initial={false}>
               {messages.map((message) => {
                 const alignment = message.sender === "self" ? "justify-end" : message.sender === "system" ? "justify-center" : "justify-start";
@@ -118,7 +138,13 @@ export function ChatPanel({
                   >
                     <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-7 ${bubbleClass}`}>
                       <div className="mb-1 text-[10px] uppercase tracking-[0.24em] text-white/35">
-                        {message.type === "voice" ? "Voice burst" : message.sender === "self" ? "You" : message.sender === "peer" ? partnerLabel : "System"}
+                        {message.type === "voice"
+                          ? m.chat.voiceBurst
+                          : message.sender === "self"
+                            ? m.chat.you
+                            : message.sender === "peer"
+                              ? partnerLabel
+                              : m.chat.system}
                       </div>
                       <div>{message.text}</div>
                     </div>
@@ -132,7 +158,7 @@ export function ChatPanel({
                 <div className="rounded-2xl border border-violet-400/18 bg-violet-500/[0.05] px-4 py-3 text-sm text-white/66">
                   <div className="mb-1 text-[10px] uppercase tracking-[0.24em] text-white/35">{partnerLabel}</div>
                   <div className="flex items-center gap-2">
-                    <span>Transmitting...</span>
+                    <span>{m.chat.transmitting}</span>
                     <span className="flex gap-1">
                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-300" />
                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-300 [animation-delay:120ms]" />
@@ -144,35 +170,33 @@ export function ChatPanel({
             ) : null}
           </div>
 
-          <form onSubmit={submit} className="border-t border-white/8 px-4 py-4 sm:px-6">
+          <form onSubmit={submit} className="sticky bottom-0 border-t border-white/8 bg-[rgba(5,8,12,0.92)] px-4 py-4 backdrop-blur sm:static sm:bg-transparent sm:px-6 sm:backdrop-blur-none">
             <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-3">
               <textarea
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
-                rows={3}
-                placeholder="Transmit something real..."
+                rows={2}
+                placeholder={m.chat.placeholder}
                 className="w-full resize-none bg-transparent px-2 py-2 text-sm text-white placeholder:text-white/28"
               />
               <div className="mt-2 flex items-center justify-between gap-3 px-2 pb-1">
-                <p className="text-[10px] uppercase tracking-[0.24em] text-white/34">No contact exchange. No profiles. No second meeting.</p>
+                <p className="text-[10px] uppercase tracking-[0.24em] text-white/34">{m.chat.footer}</p>
                 <button
                   type="submit"
                   className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-xs uppercase tracking-[0.28em] text-cyan-50 transition hover:bg-cyan-300/14"
                 >
-                  Send
+                  {m.chat.send}
                 </button>
               </div>
             </div>
           </form>
         </div>
 
-        <aside className="space-y-4 px-4 py-4 sm:px-6 lg:px-5">
+        <aside className={`space-y-4 px-4 py-4 sm:px-6 lg:block lg:px-5 ${showTools ? "block" : "hidden"}`}>
           <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
-            <p className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/40">Presence</p>
-            <h3 className="display-font mt-2 text-lg text-white">One real conversation.</h3>
-            <p className="mt-3 text-sm leading-7 text-white/60">
-              When this ends, the signal closes permanently. Stay here. Stay anonymous.
-            </p>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/40">{m.chat.presenceEyebrow}</p>
+            <h3 className="display-font mt-2 text-lg text-white">{m.chat.presenceTitle}</h3>
+            <p className="mt-3 text-sm leading-7 text-white/60">{m.chat.presenceBody}</p>
           </div>
 
           {liveVoiceEnabled ? (
@@ -193,10 +217,8 @@ export function ChatPanel({
           )}
 
           <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4 text-sm leading-7 text-white/58">
-            <p className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/40">Safety</p>
-            <p className="mt-2">
-              Live mode now routes text and voice signaling through a server-side relay, with transcript-based moderation for voice when the browser supports speech recognition.
-            </p>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/40">{m.chat.safetyEyebrow}</p>
+            <p className="mt-2">{m.chat.safetyBody}</p>
           </div>
         </aside>
       </div>

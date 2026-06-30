@@ -1,3 +1,6 @@
+"use client";
+
+import { useI18n } from "@/components/locale-provider";
 import { VoiceQosSample } from "@/lib/types";
 
 interface VoiceHistoryChartProps {
@@ -9,6 +12,7 @@ interface VoiceHistoryChartProps {
 }
 
 export function VoiceHistoryChart({ title, samples, pick, unit, colorClass = "bg-cyan-300" }: VoiceHistoryChartProps) {
+  const { m } = useI18n();
   const values = samples
     .map((sample) => pick(sample))
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
@@ -25,7 +29,7 @@ export function VoiceHistoryChart({ title, samples, pick, unit, colorClass = "bg
       </div>
       <div className="flex h-16 items-end gap-1">
         {paddedSamples.length === 0 ? (
-          <div className="text-xs text-white/30">No history yet</div>
+          <div className="text-xs text-white/30">{m.voice.history.noHistory}</div>
         ) : (
           paddedSamples.map((sample, index) => {
             const value = pick(sample);
@@ -35,7 +39,7 @@ export function VoiceHistoryChart({ title, samples, pick, unit, colorClass = "bg
                 key={`${sample.createdAt}-${index}`}
                 className={`flex-1 rounded-t-sm ${colorClass} opacity-80`}
                 style={{ height: `${height}%` }}
-                title={typeof value === "number" ? `${value.toFixed(1)} ${unit}` : "No data"}
+                title={typeof value === "number" ? `${value.toFixed(1)} ${unit}` : m.voice.history.noData}
               />
             );
           })

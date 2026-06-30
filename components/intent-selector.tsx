@@ -1,4 +1,6 @@
-import { MODE_OPTIONS, TONE_OPTIONS } from "@/lib/constants";
+"use client";
+
+import { useI18n } from "@/components/locale-provider";
 import { Frequency, ModeOption, ToneOption } from "@/lib/types";
 
 interface IntentSelectorProps {
@@ -20,12 +22,16 @@ export function IntentSelector({
   onBack,
   onConnect
 }: IntentSelectorProps) {
+  const { m } = useI18n();
+
   return (
     <div className="signal-panel w-full max-w-4xl rounded-[32px] p-6 sm:p-8">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] uppercase tracking-[0.32em] text-cyan-100/45">
-            {frequency.kind === "daily" ? `Frequency #${frequency.number}` : "Random Signal"}
+            {frequency.kind === "daily"
+              ? `${m.frequency.frequencyLabel} #${frequency.number}`
+              : m.frequency.randomSignal}
           </p>
           <h2 className="display-font mt-3 max-w-2xl text-2xl text-white sm:text-4xl">{frequency.prompt}</h2>
         </div>
@@ -34,15 +40,15 @@ export function IntentSelector({
           onClick={onBack}
           className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.26em] text-white/70 transition hover:border-cyan-300/25 hover:text-cyan-100"
         >
-          Back
+          {m.intent.back}
         </button>
       </div>
 
       <div className="grid gap-8 lg:grid-cols-[1fr,1fr]">
         <section>
-          <p className="mb-4 text-xs uppercase tracking-[0.26em] text-cyan-100/50">Mode</p>
+          <p className="mb-4 text-xs uppercase tracking-[0.26em] text-cyan-100/50">{m.intent.mode}</p>
           <div className="space-y-3">
-            {MODE_OPTIONS.map((option) => {
+            {m.modeOptions.map((option) => {
               const active = option.value === mode;
               return (
                 <button
@@ -67,9 +73,9 @@ export function IntentSelector({
         </section>
 
         <section>
-          <p className="mb-4 text-xs uppercase tracking-[0.26em] text-cyan-100/50">Tone</p>
+          <p className="mb-4 text-xs uppercase tracking-[0.26em] text-cyan-100/50">{m.intent.tone}</p>
           <div className="grid gap-3 sm:grid-cols-2">
-            {TONE_OPTIONS.map((option) => {
+            {m.toneOptions.map((option) => {
               const active = option.value === tone;
               return (
                 <button
@@ -92,15 +98,13 @@ export function IntentSelector({
       </div>
 
       <div className="mt-8 flex flex-col gap-4 border-t border-white/8 pt-6 sm:flex-row sm:items-center sm:justify-between">
-        <p className="max-w-xl text-sm leading-6 text-white/52">
-          No profiles. No likes. No reconnects. One signal, one stranger, one conversation.
-        </p>
+        <p className="max-w-xl text-sm leading-6 text-white/52">{m.intent.footer}</p>
         <button
           type="button"
           onClick={onConnect}
           className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-6 py-3 text-sm uppercase tracking-[0.3em] text-cyan-50 transition hover:bg-cyan-300/14 hover:shadow-glow"
         >
-          Connect
+          {m.intent.connect}
         </button>
       </div>
     </div>

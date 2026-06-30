@@ -1,9 +1,15 @@
+"use client";
+
+import { useI18n } from "@/components/locale-provider";
+
 interface ConnectionSequenceProps {
   steps: readonly string[];
   currentIndex: number;
 }
 
 export function ConnectionSequence({ steps, currentIndex }: ConnectionSequenceProps) {
+  const { m } = useI18n();
+
   return (
     <div className="signal-panel w-full max-w-2xl rounded-[32px] p-8 sm:p-10">
       <div className="mb-8 flex items-center gap-4">
@@ -12,7 +18,7 @@ export function ConnectionSequence({ steps, currentIndex }: ConnectionSequencePr
           <span className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(91,247,255,0.85)]" />
         </div>
         <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-cyan-100/46">Signal routing</p>
+          <p className="text-xs uppercase tracking-[0.3em] text-cyan-100/46">{m.connection.routing}</p>
           <h2 className="display-font mt-2 text-2xl text-white sm:text-3xl">{steps[currentIndex]}</h2>
         </div>
       </div>
@@ -27,7 +33,7 @@ export function ConnectionSequence({ steps, currentIndex }: ConnectionSequencePr
                 <div className="flex items-center justify-between gap-3">
                   <span className={`${complete ? "text-white" : "text-white/40"}`}>{step}</span>
                   <span className="text-[10px] uppercase tracking-[0.22em] text-white/35">
-                    {complete ? "stable" : "pending"}
+                    {complete ? m.connection.stable : m.connection.pending}
                   </span>
                 </div>
               </div>
@@ -36,9 +42,7 @@ export function ConnectionSequence({ steps, currentIndex }: ConnectionSequencePr
         })}
       </div>
 
-      <p className="mt-8 text-sm leading-7 text-white/54">
-        No profiles are exposed. The conversation channel is temporary and cannot be reopened after it ends.
-      </p>
+      <p className="mt-8 text-sm leading-7 text-white/54">{m.connection.footer}</p>
     </div>
   );
 }

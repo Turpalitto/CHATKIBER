@@ -1,3 +1,6 @@
+"use client";
+
+import { useI18n } from "@/components/locale-provider";
 import { Frequency } from "@/lib/types";
 
 interface FrequencyCardProps {
@@ -9,6 +12,8 @@ interface FrequencyCardProps {
 }
 
 export function FrequencyCard({ title, eyebrow, frequency, highlight = false, onClick }: FrequencyCardProps) {
+  const { m } = useI18n();
+
   return (
     <button
       type="button"
@@ -27,13 +32,11 @@ export function FrequencyCard({ title, eyebrow, frequency, highlight = false, on
         </span>
       </div>
 
-      <p className="max-w-xl text-sm leading-7 text-white/78 sm:text-[15px]">
-        {frequency.prompt}
-      </p>
+      <p className="max-w-xl text-sm leading-7 text-white/78 sm:text-[15px]">{frequency.prompt}</p>
 
       <div className="mt-6 flex items-center justify-between text-[11px] uppercase tracking-[0.25em] text-white/46">
-        <span>{highlight ? "Daily ritual" : "One-time connection"}</span>
-        <span className="text-cyan-200/75">Enter signal →</span>
+        <span>{highlight ? m.frequency.dailyRitual : m.frequency.oneTime}</span>
+        <span className="text-cyan-200/75">{m.frequency.enterSignal}</span>
       </div>
     </button>
   );

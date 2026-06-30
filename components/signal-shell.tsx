@@ -1,4 +1,8 @@
+"use client";
+
 import { ReactNode } from "react";
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { useI18n } from "@/components/locale-provider";
 
 interface SignalShellProps {
   children: ReactNode;
@@ -8,23 +12,26 @@ interface SignalShellProps {
 }
 
 export function SignalShell({ children, onlineCount, ambientEnabled, onToggleAmbient }: SignalShellProps) {
+  const { m } = useI18n();
+
   return (
     <div className="signal-shell flex min-h-screen flex-col px-4 py-4 sm:px-6 sm:py-6">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between text-[11px] uppercase tracking-[0.32em] text-white/55 sm:text-xs">
         <div className="flex items-center gap-3">
           <span className="display-font text-sm text-cyan-200/90">SIGNAL</span>
-          <span className="hidden sm:inline">Anonymous Conversations</span>
+          <span className="hidden sm:inline">{m.shell.tagline}</span>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
-          <span className="rounded-full border border-cyan-300/15 bg-cyan-300/5 px-3 py-1 text-cyan-100/80">
-            {onlineCount.toLocaleString()} online
+          <LanguageSwitcher />
+          <span className="rounded-full border border-cyan-300/15 bg-cyan-300/5 px-3 py-1 text-cyan-100/80" suppressHydrationWarning>
+            {onlineCount.toLocaleString()} {m.shell.online}
           </span>
           <button
             type="button"
             onClick={onToggleAmbient}
             className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-white/70 transition hover:border-cyan-300/30 hover:text-cyan-100"
           >
-            {ambientEnabled ? "Audio On" : "Audio Off"}
+            {ambientEnabled ? m.shell.audioOn : m.shell.audioOff}
           </button>
         </div>
       </header>

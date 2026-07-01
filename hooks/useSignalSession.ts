@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useReconnect } from "./useReconnect";
 import { useI18n } from "@/components/locale-provider";
 import { useFutureCopy } from "@/hooks/useFutureCopy";
 import { getAnonymousId, hashAnonymousId } from "@/lib/anonymous";
@@ -148,6 +149,8 @@ export function useSignalSession({ activeFrequency, mode, tone, setStage }: UseS
         await engineRef.current.disconnect(reason);
         engineRef.current = null;
       }
+
+      resetRetries();
 
       setTyping(false);
       setLatestWebRtcSignal(null);
@@ -510,6 +513,22 @@ export function useSignalSession({ activeFrequency, mode, tone, setStage }: UseS
     await engineRef.current.sendVoicePulse(level);
   }, []);
 
+  const sendVoiceMessage = useCallback(async (audioBlob: Blob, duration: number) => {
+    if (!engineRef.current) return;
+
+    const message: Message = {
+      id: uid("msg"),
+      sender: "self",
+      type: "voice",
+      text: `🎙️ Голосовое сообщение (${duration.toFixed(1)}с)`,
+      createdAt: Date.now()
+    };
+
+    setMessages((current) => [...current, message]);
+
+    // TODO: отправка через engine
+  }, []);
+
   const sendWebRtcSignal = useCallback(async (signal: WebRtcSignalMessage) => {
     if (!engineRef.current) {
       return;
@@ -639,6 +658,15 @@ export function useSignalSession({ activeFrequency, mode, tone, setStage }: UseS
     setStage("lost");
   }, [setStage]);
 
+  // Улучшенный reconnect
+  const { attemptReconnect, resetRetries } = useReconnect({
+    onReconnect: () => {
+      if (engineRef.current) {
+        appendSystemMessage("🔄 Пытаемся восстановить соединение...");
+      }
+    }
+  });
+
   return {
     messages,
     typing,
@@ -658,6 +686,7 @@ export function useSignalSession({ activeFrequency, mode, tone, setStage }: UseS
     connect,
     sendText,
     sendVoicePulse,
+    sendVoiceMessage,
     sendWebRtcSignal,
     moderateVoiceTranscript,
     reportVoiceQos,

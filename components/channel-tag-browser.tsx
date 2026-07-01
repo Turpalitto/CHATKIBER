@@ -18,9 +18,10 @@ interface ChannelTagBrowserProps {
     empty: string;
     listeners: string;
   };
+  customChannels?: Array<{ id: string; label: string; prompt: string }>;
 }
 
-export function ChannelTagBrowser({ channelStats, onSelect, labels }: ChannelTagBrowserProps) {
+export function ChannelTagBrowser({ channelStats, onSelect, labels, customChannels = [] }: ChannelTagBrowserProps) {
   const { locale } = useI18n();
   const [query, setQuery] = useState("");
   const popular = useMemo(() => getPopularChannelTags(10, channelStats), [channelStats]);
@@ -63,6 +64,32 @@ export function ChannelTagBrowser({ channelStats, onSelect, labels }: ChannelTag
           </div>
         </div>
       ) : null}
+
+      {/* Пользовательские каналы */}
+      {customChannels.length > 0 && (
+        <div className="mt-5">
+          <p className="mb-3 text-[10px] uppercase tracking-[0.28em] text-white/38">ТВОИ КАНАЛЫ</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {customChannels.map((channel, index) => (
+              <motion.button
+                key={channel.id}
+                type="button"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.03 }}
+                onClick={() => onSelect(channel.id)}
+                className="rounded-2xl border border-violet-400/20 bg-violet-400/5 px-4 py-3 text-left transition hover:border-violet-400/40"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-white/90">{channel.label}</span>
+                  <span className="text-[10px] text-violet-400/70">ТВОЙ</span>
+                </div>
+                <p className="mt-1 text-xs text-white/50 line-clamp-2">{channel.prompt}</p>
+              </motion.button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-5">
         <p className="mb-3 text-[10px] uppercase tracking-[0.28em] text-white/38">{labels.all}</p>

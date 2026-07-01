@@ -5,15 +5,18 @@ import { useFutureMode } from "@/components/future-mode-provider";
 import { useFutureCopy } from "@/hooks/useFutureCopy";
 import { MemoryImprintViz } from "@/components/memory-imprint-viz";
 import { SessionFeedback } from "@/components/session-feedback";
+import { DeadDropPanel } from "@/components/dead-drop-panel";
 import { formatReceiptDuration } from "@/lib/session-receipt";
-import { Frequency, SessionReceipt } from "@/lib/types";
+import { Frequency, SessionReceipt, DeadDrop } from "@/lib/types";
 
 interface SessionReceiptPanelProps {
   receipt: SessionReceipt;
   frequency: Frequency | null;
   onContinue: () => void;
   onTryAgain?: () => void;
-  onLeaveDeadDrop: (body: string) => Promise<void>;
+  onLeaveDeadDrop: (body: string) => Promise<any>;
+  deadDrops?: DeadDrop[];
+  onOpenDeadDrops?: () => void;
 }
 
 export function SessionReceiptPanel({
@@ -21,7 +24,9 @@ export function SessionReceiptPanel({
   frequency,
   onContinue,
   onTryAgain,
-  onLeaveDeadDrop
+  onLeaveDeadDrop,
+  deadDrops = [],
+  onOpenDeadDrops
 }: SessionReceiptPanelProps) {
   const m = useFutureCopy();
   const { enabled: futureMode } = useFutureMode();
@@ -93,38 +98,21 @@ export function SessionReceiptPanel({
         {r.continue}
       </button>
 
-      {frequency?.kind === "daily" ? (
-        <div className="mt-4">
-          {!showDrop ? (
-            <button
-              type="button"
-              onClick={() => setShowDrop(true)}
-              className="text-xs text-white/40 underline-offset-2 hover:text-white/60 hover:underline"
-            >
-              {r.leaveNote}
-            </button>
-          ) : (
-            <div className="mt-2 space-y-2 text-left">
-              <textarea
-                value={drop}
-                onChange={(event) => setDrop(event.target.value)}
-                maxLength={140}
-                rows={2}
-                placeholder={m.deadDrop.placeholder}
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
-              />
-              <button
-                type="button"
-                disabled={saving || !drop.trim()}
-                onClick={() => void submitDrop()}
-                className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white/70 disabled:opacity-40"
-              >
-                {saving ? r.saving : m.deadDrop.leave}
-              </button>
-            </div>
-          )}
+      {/* Dead Drop Section - улучшенная версия */}
+      {frequency && (
+        <div className="mt-6">
+          <button
+            onClick={onOpenDeadDrops}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 py-3 text-sm text-white/80 transition hover:border-cyan-400/30 hover:bg-white/10"
+          >
+            <span>🕳️</span>
+            <span>Dead Drop • {deadDrops.length} заметок</span>
+          </button>
+          <div className="mt-1.5 text-center text-[10px] text-white/35">
+            Анонимные сообщения на этой частоте
+          </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

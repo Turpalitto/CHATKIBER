@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AtmosphereBackground } from "@/components/atmosphere-background";
 import { ChatPanel } from "@/components/chat-panel";
@@ -10,6 +10,19 @@ import { LandingStage } from "@/components/landing-stage";
 import { ModerationOverlay } from "@/components/moderation-overlay";
 import { SearchSignal } from "@/components/search-signal";
 import { SessionReceiptPanel } from "@/components/session-receipt-panel";
+import { DeadDropPanel } from "@/components/dead-drop-panel";
+import { CreateChannelModal } from "@/components/create-channel-modal";
+import { KeyboardHints } from "@/components/keyboard-hints";
+import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
+import { UserStatsBadge } from "@/components/user-stats-badge";
+import { ReconnectNotice } from "@/components/reconnect-notice";
+import { SessionHistoryPanel } from "@/components/session-history-panel";
+import { EchoPanel } from "@/components/echo-panel";
+import { ThemeSwitcher } from "@/components/theme-switcher";
+import { DestructSelector } from "@/components/destruct-selector";
+import { useTheme } from "@/hooks/useTheme";
+import { useSelfDestruct } from "@/hooks/useSelfDestruct";
+import { useMatchQuality } from "@/hooks/useMatchQuality";
 import { SignalLost } from "@/components/signal-lost";
 import { SignalShell } from "@/components/signal-shell";
 import { WitnessReportPanel } from "@/components/witness-report-panel";
@@ -56,6 +69,38 @@ export default function HomePage() {
       audio.playSfx("tap");
     }
     await audio.toggle();
+  };
+
+  // Dead Drop state
+  const [showDeadDrops, setShowDeadDrops] = useState(false);
+  const [showCreateChannel, setShowCreateChannel] = useState(false);
+  const [customChannels, setCustomChannels] = useState<Array<{ id: string; label: string; prompt: string }>>([]);
+  const [showReconnect, setShowReconnect] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showEcho, setShowEcho] = useState(false);
+  const { theme, changeTheme } = useTheme();
+  const { mode: destructMode, setMode: setDestructMode } = useSelfDestruct();
+  const { quality, submitQuality } = useMatchQuality();
+
+  const openDeadDrops = async () => {
+    if (signal.activeFrequency) {
+      await signal.loadDeadDrops(signal.activeFrequency);
+    }
+    setShowDeadDrops(true);
+  };
+
+  const closeDeadDrops = () => {
+    setShowDeadDrops(false);
+  };
+
+  const handleCreateChannel = (name: string, prompt: string) => {
+    const newChannel = {
+      id: `custom-${Date.now()}`,
+      label: name,
+      prompt: prompt
+    };
+    setCustomChannels(prev => [newChannel, ...prev]);
   };
 
   return (
@@ -125,6 +170,16 @@ export default function HomePage() {
                 />
               </div>
               <div className="mt-6">
+                <div className="mb-3 flex items-center justify-between px-1">
+                  <div className="text-sm text-white/60">Топ каналы</div>
+                  <button
+                    onClick={() => setShowCreateChannel(true)}
+                    className="text-xs text-cyan-400/70 hover:text-cyan-400"
+                  >
+                    + Создать канал
+                  </button>
+                </div>
+
                 <ChannelTagBrowser
                   channelStats={channelStats}
                   onSelect={audio.withSfx("select", signal.chooseChannel)}
@@ -137,6 +192,7 @@ export default function HomePage() {
                     empty: m.frequency.channelsEmpty,
                     listeners: m.frequency.listeners
                   }}
+                  customChannels={customChannels}
                 />
               </div>
               <div className="mt-8 text-center">
@@ -192,6 +248,7 @@ export default function HomePage() {
                 liveVoiceEnabled={liveVoiceEnabled}
                 onSendText={signal.sendText}
                 onSendVoice={signal.sendVoicePulse}
+                onSendVoiceMessage={signal.sendVoiceMessage}
                 onSendWebRtcSignal={signal.sendWebRtcSignal}
                 onModerateVoiceTranscript={signal.moderateVoiceTranscript}
                 onReportVoiceQos={signal.reportVoiceQos}
@@ -220,7 +277,9 @@ export default function HomePage() {
                 frequency={signal.activeFrequency}
                 onContinue={audio.withSfx("transition", signal.closeReceipt)}
                 onTryAgain={audio.withSfx("select", signal.findAnotherSignal)}
-                onLeaveDeadDrop={signal.leaveDeadDrop}
+                onLeaveDeadDrop={async (body: string) => { await signal.leaveDeadDrop(body); }}
+                deadDrops={signal.deadDrops}
+                onOpenDeadDrops={openDeadDrops}
               />
             </motion.section>
           ) : null}
@@ -257,6 +316,80 @@ export default function HomePage() {
           onEnd={audio.withSfx("warn", () => void signal.endSignal(m.system.safetyEnded))}
         />
       ) : null}
+
+      <DeadDropPanel
+        frequency={signal.activeFrequency}
+        drops={signal.deadDrops}
+        onLeaveDrop={signal.leaveDeadDrop}
+        onClose={closeDeadDrops}
+        isOpen={showDeadDrops}
+      />
+
+      <CreateChannelModal
+        isOpen={showCreateChannel}
+        onClose={() => setShowCreateChannel(false)}
+        onCreate={handleCreateChannel}
+      />
+
+      <KeyboardHints />
+      <PWAInstallPrompt />
+      <UserStatsBadge 
+        stats={signal.userStats} 
+        detailedStats={signal.detailedStats} 
+      />
+
+      {/* Match Quality Modal */}
+      {signal.stage === "receipt" && !quality && (
+        <div className="fixed bottom-6 left-1/2 z-[80] -translate-x-1/2">
+          <div className="signal-panel rounded-2xl p-4 text-center">
+            <div className="text-sm mb-3 text-white/70">Оцени качество матча</div>
+            <div className="flex gap-4 justify-center">
+              {[1,2,3,4,5].map(n => (
+                <button 
+                  key={n} 
+                  onClick={() => submitQuality(n, n)}
+                  className="px-3 py-1 rounded bg-white/10 hover:bg-white/20"
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showHistory && (
+        <SessionHistoryPanel
+          history={signal.sessionHistory}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
+
+      {showEcho && signal.activeFrequency && (
+        <EchoPanel
+          frequencyLabel={signal.activeFrequency.channelLabel || signal.activeFrequency.prompt}
+          onLeaveEcho={(text) => {
+            console.log("Echo left:", text);
+            setShowEcho(false);
+          }}
+          onClose={() => setShowEcho(false)}
+        />
+      )}
+
+      {/* Theme Switcher */}
+      <div className="fixed top-4 right-4 z-40">
+        <ThemeSwitcher currentTheme={theme} onChange={changeTheme} />
+      </div>
+
+      <ReconnectNotice 
+        isVisible={showReconnect} 
+        attempt={reconnectAttempt} 
+        maxAttempts={5}
+        onRetry={() => {
+          setReconnectAttempt(p => p + 1);
+          // Здесь можно вызвать reconnect логику
+        }}
+      />
     </SignalShell>
   );
 }

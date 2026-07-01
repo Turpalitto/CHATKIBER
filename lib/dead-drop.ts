@@ -1,58 +1,73 @@
-import { DeadDrop, Frequency } from "@/lib/types";
+import { DeadDrop, Frequency, FrequencyKind } from "@/lib/types";
 
 const STORAGE_PREFIX = "signal-dead-drop";
+const MAX_DROPS_PER_FREQUENCY = 5;
 
 function storageKey(frequency: Frequency) {
   return `${STORAGE_PREFIX}:${frequency.dateKey}:${frequency.number}`;
 }
 
-export function fetchLocalDeadDrop(frequency: Frequency): DeadDrop | null {
-  if (typeof window === "undefined" || frequency.kind !== "daily") {
-    return null;
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+}
+
+export function fetchLocalDeadDrops(frequency: Frequency): DeadDrop[] {
+  if (typeof window === "undefined") {
+    return [];
   }
 
   const raw = window.localStorage.getItem(storageKey(frequency));
-  if (!raw) {
-    return null;
-  }
+  if (!raw) return [];
 
   try {
-    const parsed = JSON.parse(raw) as DeadDrop;
-    if (parsed.expiresAt < Date.now()) {
-      window.localStorage.removeItem(storageKey(frequency));
-      return null;
+    const parsed = JSON.parse(raw) as DeadDrop[];
+    const now = Date.now();
+    const valid = parsed.filter((d) => d.expiresAt > now);
+    
+    if (valid.length !== parsed.length) {
+      window.localStorage.setItem(storageKey(frequency), JSON.stringify(valid));
     }
-    return parsed;
+    
+    return valid;
   } catch {
-    return null;
+    return [];
   }
 }
 
-export function saveLocalDeadDrop(frequency: Frequency, body: string) {
-  if (typeof window === "undefined" || frequency.kind !== "daily") {
-    return null;
+export function saveLocalDeadDrop(frequency: Frequency, body: string): DeadDrop | null {
+  if (typeof window === "undefined") return null;
+
+  const trimmed = body.trim().slice(0, 160);
+  if (!trimmed) return null;
+
+  const drops = fetchLocalDeadDrops(frequency);
+  
+  if (drops.length >= MAX_DROPS_PER_FREQUENCY) {
+    drops.shift(); // удаляем самую старую
   }
 
-  const payload: DeadDrop = {
-    body: body.trim().slice(0, 140),
+  const newDrop: DeadDrop = {
+    id: generateId(),
+    body: trimmed,
     createdAt: Date.now(),
-    expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+    expiresAt: Date.now() + 48 * 60 * 60 * 1000, // 48 часов
     frequencyNumber: frequency.number,
-    dateKey: frequency.dateKey
+    dateKey: frequency.dateKey,
+    frequencyKind: frequency.kind,
+    frequencyLabel: frequency.channelLabel || frequency.prompt
   };
 
-  window.localStorage.setItem(storageKey(frequency), JSON.stringify(payload));
-  return payload;
+  const updated = [...drops, newDrop];
+  window.localStorage.setItem(storageKey(frequency), JSON.stringify(updated));
+  
+  return newDrop;
 }
 
-export async function fetchDeadDrop(frequency: Frequency): Promise<DeadDrop | null> {
-  const local = fetchLocalDeadDrop(frequency);
-  if (local) {
-    return local;
-  }
-
+export async function fetchDeadDrops(frequency: Frequency): Promise<DeadDrop[]> {
+  const local = fetchLocalDeadDrops(frequency);
+  
   if (process.env.NEXT_PUBLIC_SIGNAL_LIVE !== "1") {
-    return null;
+    return local;
   }
 
   try {
@@ -61,20 +76,20 @@ export async function fetchDeadDrop(frequency: Frequency): Promise<DeadDrop | nu
       number: String(frequency.number)
     });
     const response = await fetch(`/api/signal/dead-drop?${params.toString()}`);
-    if (!response.ok) {
-      return null;
+    if (response.ok) {
+      const serverDrops = (await response.json()) as DeadDrop[];
+      return [...local, ...serverDrops].sort((a, b) => b.createdAt - a.createdAt);
     }
-    return (await response.json()) as DeadDrop;
   } catch {
-    return null;
+    // fallback to local
   }
+  
+  return local;
 }
 
 export async function leaveDeadDrop(frequency: Frequency, body: string): Promise<DeadDrop | null> {
-  const trimmed = body.trim().slice(0, 140);
-  if (!trimmed || frequency.kind !== "daily") {
-    return null;
-  }
+  const trimmed = body.trim().slice(0, 160);
+  if (!trimmed) return null;
 
   if (process.env.NEXT_PUBLIC_SIGNAL_LIVE === "1") {
     try {
@@ -84,16 +99,29 @@ export async function leaveDeadDrop(frequency: Frequency, body: string): Promise
         body: JSON.stringify({
           dateKey: frequency.dateKey,
           number: frequency.number,
-          body: trimmed
+          body: trimmed,
+          kind: frequency.kind,
+          label: frequency.channelLabel || frequency.prompt
         })
       });
       if (response.ok) {
         return (await response.json()) as DeadDrop;
       }
     } catch {
-      // fall through to local storage
+      // fall through to local
     }
   }
 
   return saveLocalDeadDrop(frequency, trimmed);
+}
+
+// Утилита для красивого отображения времени
+export function getDeadDropTimeLeft(drop: DeadDrop): string {
+  const ms = drop.expiresAt - Date.now();
+  if (ms <= 0) return "истёк";
+  
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  if (hours < 1) return "менее часа";
+  if (hours < 24) return `${hours}ч`;
+  return `${Math.floor(hours / 24)}д`;
 }

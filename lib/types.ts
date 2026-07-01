@@ -58,11 +58,14 @@ export interface MemoryImprint {
 }
 
 export interface DeadDrop {
+  id: string;
   body: string;
   createdAt: number;
   expiresAt: number;
   frequencyNumber: number;
   dateKey: string;
+  frequencyKind?: FrequencyKind;
+  frequencyLabel?: string;
 }
 
 export interface WitnessReport {

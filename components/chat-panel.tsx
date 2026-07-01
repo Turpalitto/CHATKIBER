@@ -27,6 +27,12 @@ import { HoldToTalk } from "./hold-to-talk";
 import { ConversationStarter } from "./conversation-starter";
 import { SessionTimer } from "./session-timer";
 import { VoiceLinkPanel } from "./voice-link-panel";
+import { MessageReactions } from "./message-reactions";
+import { VoiceMessageRecorder } from "./voice-message-recorder";
+import { VoiceMessagePlayer } from "./voice-message-player";
+import { rateLimiter } from "@/lib/rate-limiter";
+import { useSwipe } from "@/hooks/useSwipe";
+import { BookmarkButton } from "./bookmark-button";
 
 interface ChatPanelProps {
   partnerLabel: string;
@@ -38,6 +44,7 @@ interface ChatPanelProps {
   liveVoiceEnabled: boolean;
   onSendText: (text: string) => void | Promise<boolean> | boolean;
   onSendVoice: (level: number) => void | Promise<void>;
+  onSendVoiceMessage?: (audioBlob: Blob, duration: number) => void;
   onSendWebRtcSignal: (signal: WebRtcSignalMessage) => void | Promise<void>;
   onModerateVoiceTranscript: (transcript: string) => Promise<ModerationResult>;
   onReportVoiceQos: (sample: VoiceQosSample) => Promise<VoiceQosReportResult>;
@@ -108,6 +115,7 @@ export function ChatPanel({
   liveVoiceEnabled,
   onSendText,
   onSendVoice,
+  onSendVoiceMessage,
   onSendWebRtcSignal,
   onModerateVoiceTranscript,
   onReportVoiceQos,
@@ -128,6 +136,9 @@ export function ChatPanel({
   const { decay, stage: decayStage } = useSignalDecay(sessionStartedAt);
   const [value, setValue] = useState("");
   const [showTools, setShowTools] = useState(false);
+  const [reactions, setReactions] = useState<Record<string, Record<string, number>>>({});
+  const [voiceMessages, setVoiceMessages] = useState<Record<string, { blob: Blob; duration: number }>>({});
+  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -146,11 +157,75 @@ export function ChatPanel({
       return;
     }
 
+    // Rate limiting
+    if (!rateLimiter.canSend("text", 15)) {
+      const remaining = rateLimiter.getRemainingTime("text");
+      alert(`Слишком много сообщений. Подожди ${remaining} сек.`);
+      return;
+    }
+
     const sent = await onSendText(trimmed);
     if (sent !== false) {
       setValue("");
     }
   };
+
+  // Swipe handlers
+  const swipeRef = useSwipe({
+    onSwipeLeft: () => {
+      // Свайп влево = реакция
+      console.log("Swipe left - reaction");
+    },
+    onSwipeRight: () => {
+      // Свайп вправо = bookmark
+      console.log("Swipe right - bookmark");
+    }
+  });
+
+  // Keyboard shortcuts (расширенные)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+
+      // Закрыть инструменты
+      if (e.key === "Escape") {
+        if (showTools) {
+          setShowTools(false);
+        }
+      }
+
+      // Открыть/закрыть инструменты
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setShowTools((s) => !s);
+      }
+
+      // Отправить сообщение (Ctrl/Cmd + Enter)
+      if (mod && e.key === "Enter" && value.trim()) {
+        e.preventDefault();
+        const formEvent = new Event("submit", { bubbles: true, cancelable: true });
+        const form = document.querySelector("form");
+        if (form) form.dispatchEvent(formEvent);
+      }
+
+      // Фокус на поле ввода
+      if (mod && e.key === "/") {
+        e.preventDefault();
+        const textarea = document.querySelector("textarea");
+        textarea?.focus();
+      }
+
+      // Быстрый голос
+      if (e.key === "v" && !mod && document.activeElement?.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        setShowTools(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showTools, value]);
 
   const voiceProps = {
     liveVoiceEnabled,
@@ -247,6 +322,20 @@ export function ChatPanel({
           >
             {m.chat.send}
           </button>
+
+          {onSendVoiceMessage && (
+            <VoiceMessageRecorder
+              onSendVoiceMessage={(blob, duration) => {
+                const msgId = Date.now().toString(36);
+                setVoiceMessages(prev => ({
+                  ...prev,
+                  [msgId]: { blob, duration }
+                }));
+                onSendVoiceMessage(blob, duration);
+              }}
+              disabled={false}
+            />
+          )}
         </div>
         <p className="mt-1.5 text-[10px] text-white/30">
           {futureMode ? m.terminal.hint : m.chat.safetyShort}
@@ -286,7 +375,43 @@ export function ChatPanel({
                           ? partnerLabel
                           : m.chat.system}
                   </div>
-                  <div>{message.text}</div>
+                  {message.type === "voice" && voiceMessages[message.id] ? (
+                    <VoiceMessagePlayer 
+                      audioBlob={voiceMessages[message.id].blob} 
+                      duration={voiceMessages[message.id].duration}
+                      isSelf={message.sender === "self"}
+                    />
+                  ) : (
+                    <div>{message.text}</div>
+                  )}
+
+                  {message.sender !== "system" && (
+                    <div className="mt-1 flex items-center justify-between">
+                      <MessageReactions
+                        messageId={message.id}
+                        reactions={reactions[message.id] || {}}
+                        onReact={(emoji) => {
+                          setReactions((prev) => {
+                            const current = prev[message.id] || {};
+                            const newCount = (current[emoji] || 0) + 1;
+                            return {
+                              ...prev,
+                              [message.id]: { ...current, [emoji]: newCount }
+                            };
+                          });
+                        }}
+                      />
+                      <BookmarkButton
+                        onClick={() => {
+                          if (!bookmarkedIds.includes(message.id)) {
+                            setBookmarkedIds([...bookmarkedIds, message.id]);
+                            // Можно передать в родительский компонент
+                          }
+                        }}
+                        isBookmarked={bookmarkedIds.includes(message.id)}
+                      />
+                    </div>
+                  )}
                 </div>
               </motion.div>
             );

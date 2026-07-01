@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useUserStats } from "./useUserStats";
+import { useSessionHistory } from "./useSessionHistory";
 import { useI18n } from "@/components/locale-provider";
 import { markOnboardingSeen } from "@/lib/onboarding";
 import { getRandomFrequency, getTodaysFrequency } from "@/lib/frequency";
@@ -9,13 +11,15 @@ import { useSignalOnline } from "@/hooks/useSignalOnline";
 import { useSignalSession } from "@/hooks/useSignalSession";
 import { useNetworkEvents } from "@/hooks/useNetworkEvents";
 import { getChannelFrequency } from "@/lib/channels/tags";
-import { leaveDeadDrop } from "@/lib/dead-drop";
-import { AppStage, Frequency, FrequencyKind, ModeOption, ToneOption } from "@/lib/types";
+import { leaveDeadDrop, fetchDeadDrops } from "@/lib/dead-drop";
+import { AppStage, Frequency, FrequencyKind, ModeOption, ToneOption, DeadDrop } from "@/lib/types";
 
 export function useSignalApp() {
   const { locale } = useI18n();
   const onlineCount = useSignalOnline();
   const networkEvent = useNetworkEvents();
+  const { stats: userStats, detailedStats, recordSession } = useUserStats();
+  const { history: sessionHistory, addSession, clearHistory } = useSessionHistory();
 
   const [stage, setStage] = useState<AppStage>("landing");
   const [dailyFrequency, setDailyFrequency] = useState<Frequency>(() => getTodaysFrequency(undefined, locale));
@@ -118,12 +122,24 @@ export function useSignalApp() {
     setStage("landing");
   }, [session]);
 
+  const [deadDrops, setDeadDrops] = useState<DeadDrop[]>([]);
+
+  const loadDeadDrops = useCallback(async (frequency: Frequency) => {
+    const drops = await fetchDeadDrops(frequency);
+    setDeadDrops(drops);
+    return drops;
+  }, []);
+
   const leaveDeadDropNote = useCallback(
-    async (body: string) => {
+    async (body: string): Promise<any> => {
       if (!activeFrequency) {
-        return;
+        return null;
       }
-      await leaveDeadDrop(activeFrequency, body);
+      const saved = await leaveDeadDrop(activeFrequency, body);
+      if (saved) {
+        setDeadDrops((prev) => [saved, ...prev].slice(0, 20));
+      }
+      return saved;
     },
     [activeFrequency]
   );
@@ -132,6 +148,24 @@ export function useSignalApp() {
     session.closeReceipt();
     setStage("landing");
   }, [session]);
+
+  // Автоматическая запись в историю при завершении сессии
+  useEffect(() => {
+    if (stage === "receipt" && activeFrequency && session.sessionStartedAt) {
+      const durationMin = Math.max(1, Math.round((Date.now() - session.sessionStartedAt) / 60000));
+      
+      addSession({
+        frequency: {
+          label: activeFrequency.channelLabel || activeFrequency.prompt,
+          kind: activeFrequency.kind
+        },
+        startedAt: session.sessionStartedAt,
+        durationMinutes: durationMin,
+        messagesCount: session.messages.length,
+        partnerLabel: session.partnerLabel
+      });
+    }
+  }, [stage]);
 
   return {
     stage,
@@ -164,6 +198,7 @@ export function useSignalApp() {
     setTone,
     sendText: session.sendText,
     sendVoicePulse: session.sendVoicePulse,
+    sendVoiceMessage: session.sendVoiceMessage,
     sendWebRtcSignal: session.sendWebRtcSignal,
     moderateVoiceTranscript: session.moderateVoiceTranscript,
     reportVoiceQos: session.reportVoiceQos,
@@ -177,7 +212,15 @@ export function useSignalApp() {
     dismissWarning: session.dismissWarning,
     dismissWitness: session.dismissWitness,
     closeReceipt,
-    leaveDeadDrop: leaveDeadDropNote,
-    findAnotherSignal
+    leaveDeadDrop: leaveDeadDropNote as any,
+    deadDrops,
+    loadDeadDrops,
+    findAnotherSignal,
+    userStats,
+    detailedStats,
+    recordSession,
+    sessionHistory,
+    addSession,
+    clearHistory,
   } as const;
 }

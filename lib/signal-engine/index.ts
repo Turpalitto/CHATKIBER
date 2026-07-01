@@ -35,6 +35,7 @@ export type EngineEvent =
 export interface SignalEngine {
   connect(options: EngineConnectOptions): Promise<EngineConnectResult>;
   sendText(text: string): Promise<EngineSendTextResult>;
+  sendTerminal(command: string, systemText: string): Promise<void>;
   sendVoicePulse(level: number): Promise<void>;
   sendWebRtcSignal(signal: WebRtcSignalMessage): Promise<void>;
   moderateVoiceTranscript(transcript: string): Promise<ModerationResult>;

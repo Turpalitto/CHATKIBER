@@ -24,7 +24,8 @@ Deno.serve(async (request) => {
         p_tone: body.tone,
         p_frequency_kind: body.frequency?.kind,
         p_frequency_number: body.frequency?.number,
-        p_frequency_prompt: body.frequency?.prompt
+        p_frequency_prompt: body.frequency?.prompt,
+        p_channel_id: body.frequency?.channelId ?? null
       });
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;

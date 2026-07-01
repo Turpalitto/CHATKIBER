@@ -39,4 +39,25 @@ describe("dispatchRelayEvent", () => {
       reason: "peer left"
     });
   });
+
+  it("maps terminal events to peer system messages", () => {
+    const emit = vi.fn();
+    dispatchRelayEvent(
+      {
+        event_type: "terminal",
+        payload: { command: "drift", text: "Signal drifts.", createdAt: 2000 }
+      },
+      emit
+    );
+
+    expect(emit).toHaveBeenCalledWith({
+      type: "message",
+      message: expect.objectContaining({
+        sender: "peer",
+        type: "system",
+        text: "Signal drifts.",
+        createdAt: 2000
+      })
+    });
+  });
 });

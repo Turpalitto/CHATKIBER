@@ -97,6 +97,24 @@ export function createMockSignalEngine(): SignalEngine {
 
       return { ok: true, text };
     },
+    async sendTerminal(command: string, systemText: string) {
+      if (!connected) {
+        return;
+      }
+
+      schedule(() => {
+        emit({
+          type: "message",
+          message: {
+            id: uid("msg"),
+            sender: "peer",
+            type: "system",
+            text: systemText,
+            createdAt: Date.now()
+          }
+        });
+      }, 600 + Math.random() * 400);
+    },
     async sendVoicePulse(level: number) {
       if (!connected) {
         return;

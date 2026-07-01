@@ -2,42 +2,56 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/components/locale-provider";
+import { useFutureCopy } from "@/hooks/useFutureCopy";
 import { getAnonymousId, hashAnonymousId } from "@/lib/anonymous";
 import { moderateMessage } from "@/lib/moderation";
-import { buildIntroMessage, buildSystemMessage } from "@/lib/signal/messages";
+import { computeSynapticScore } from "@/lib/neural-link";
+import { buildIntroMessage, buildSynapticMessage, buildSystemMessage } from "@/lib/signal/messages";
+import { buildSessionReceipt } from "@/lib/session-receipt";
 import { createSignalEngine, SignalEngine } from "@/lib/signal-engine";
-import { uid, wait } from "@/lib/utils";
+import {
+  createPulseMessage,
+  parseTerminalCommand,
+  removeLastSelfMessage,
+  runTerminalCommand,
+  terminalSystemMessage
+} from "@/lib/signal/terminal-commands";
+import { uid } from "@/lib/utils";
 import {
   AppStage,
   Frequency,
   Message,
   ModerationResult,
   ModeOption,
+  SearchPhase,
+  SessionReceipt,
   ToneOption,
   VoiceDiagnosticsShareResult,
   VoiceQosExportResult,
   VoiceQosRecommendationsResult,
   VoiceQosReportResult,
   VoiceQosSample,
-  WebRtcSignalMessage
+  WebRtcSignalMessage,
+  WitnessReport
 } from "@/lib/types";
+
+interface ConnectOverrides {
+  frequency?: Frequency;
+  mode?: ModeOption;
+  tone?: ToneOption;
+  collisionWindow?: boolean;
+}
 
 interface UseSignalSessionOptions {
   activeFrequency: Frequency | null;
   mode: ModeOption;
   tone: ToneOption;
   setStage: (stage: AppStage) => void;
-  setConnectionIndex: (index: number) => void;
 }
 
-export function useSignalSession({
-  activeFrequency,
-  mode,
-  tone,
-  setStage,
-  setConnectionIndex
-}: UseSignalSessionOptions) {
-  const { locale, m } = useI18n();
+export function useSignalSession({ activeFrequency, mode, tone, setStage }: UseSignalSessionOptions) {
+  const { locale } = useI18n();
+  const m = useFutureCopy();
   const localeRef = useRef(locale);
   localeRef.current = locale;
   const mRef = useRef(m);
@@ -51,10 +65,28 @@ export function useSignalSession({
   const [violationCount, setViolationCount] = useState(0);
   const [latestWebRtcSignal, setLatestWebRtcSignal] = useState<WebRtcSignalMessage | null>(null);
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
+  const [searchPhase, setSearchPhase] = useState<SearchPhase>("connecting");
+  const [queueStartedAt, setQueueStartedAt] = useState<number | null>(null);
+  const [connectionStep, setConnectionStep] = useState<string | undefined>(undefined);
+  const [sessionReceipt, setSessionReceipt] = useState<SessionReceipt | null>(null);
+  const [witnessReport, setWitnessReport] = useState<WitnessReport | null>(null);
 
   const engineRef = useRef<SignalEngine | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const anonTokenHashRef = useRef("");
+  const pendingConnectRef = useRef<(ConnectOverrides & { frequency: Frequency }) | null>(null);
+  const searchCommittedRef = useRef(false);
+  const collisionWindowRef = useRef(false);
+  const sessionFrequencyRef = useRef<Frequency | null>(null);
+  const sessionToneRef = useRef<ToneOption>(tone);
+  const sessionStartedAtRef = useRef<number | null>(null);
+  const sessionSealPayloadRef = useRef<string | null>(null);
+  const violationCountRef = useRef(0);
+  const messagesRef = useRef<Message[]>([]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const ensureAnonTokenHash = useCallback(async () => {
     if (anonTokenHashRef.current) {
@@ -74,6 +106,16 @@ export function useSignalSession({
     setPartnerLabel(mRef.current.partnerLabels[0]);
     setLatestWebRtcSignal(null);
     setSessionStartedAt(null);
+    sessionStartedAtRef.current = null;
+    setSearchPhase("connecting");
+    setQueueStartedAt(null);
+    setConnectionStep(undefined);
+    setSessionReceipt(null);
+    setWitnessReport(null);
+    pendingConnectRef.current = null;
+    sessionFrequencyRef.current = null;
+    violationCountRef.current = 0;
+    searchCommittedRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -94,61 +136,10 @@ export function useSignalSession({
   const resetWarnings = useCallback(() => {
     setWarning(null);
     setViolationCount(0);
+    violationCountRef.current = 0;
   }, []);
 
-  const applyViolation = useCallback(
-    (result: ModerationResult) => {
-      setWarning(result);
-      if (result.status === "block") {
-        setViolationCount((current) => {
-          const next = current + 1;
-          if (next >= 2) {
-            void (async () => {
-              const reason = mRef.current.system.safetyEnded;
-              if (engineRef.current) {
-                await engineRef.current.disconnect(reason);
-                engineRef.current = null;
-              }
-              setTyping(false);
-              setLatestWebRtcSignal(null);
-              setDisconnectReason(reason);
-              setSessionStartedAt(null);
-              setStage("lost");
-            })();
-          }
-          return next;
-        });
-      }
-    },
-    [setStage]
-  );
-
-  const enterChat = useCallback(
-    (nextPartnerLabel: string, frequency: Frequency) => {
-      const intro = buildIntroMessage(frequency, mRef.current);
-      setPartnerLabel(nextPartnerLabel);
-      setSessionStartedAt(Date.now());
-      setMessages((current) => {
-        const alreadyPresent = current.some((message) => message.sender === "system" && message.text === intro.text);
-        if (alreadyPresent) {
-          return current;
-        }
-
-        const nonSystemMessages = current.filter((message) => message.sender !== "system");
-        return [intro, ...nonSystemMessages];
-      });
-      setStage("chat");
-    },
-    [setStage]
-  );
-
-  const clearEngine = useCallback(() => {
-    unsubscribeRef.current?.();
-    unsubscribeRef.current = null;
-    engineRef.current = null;
-  }, []);
-
-  const terminate = useCallback(
+  const finishSession = useCallback(
     async (reason?: string) => {
       unsubscribeRef.current?.();
       unsubscribeRef.current = null;
@@ -161,10 +152,132 @@ export function useSignalSession({
       setTyping(false);
       setLatestWebRtcSignal(null);
       setDisconnectReason(reason ?? null);
+
+      const hadSession = sessionStartedAtRef.current && sessionFrequencyRef.current;
+      if (hadSession) {
+        const receipt = buildSessionReceipt({
+          frequency: sessionFrequencyRef.current!,
+          messages: messagesRef.current,
+          sessionStartedAt: sessionStartedAtRef.current,
+          tone: sessionToneRef.current,
+          violationCount: violationCountRef.current,
+          summaryLines: mRef.current.receipt.summaries,
+          sealPayload: sessionSealPayloadRef.current ?? undefined
+        });
+        setSessionReceipt(receipt);
+        setSessionStartedAt(null);
+        sessionStartedAtRef.current = null;
+
+        if (process.env.NEXT_PUBLIC_SIGNAL_LIVE === "1" && sessionFrequencyRef.current) {
+          void fetch("/api/signal/receipt", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              receipt,
+              frequency: {
+                dateKey: sessionFrequencyRef.current.dateKey,
+                number: sessionFrequencyRef.current.number,
+                kind: sessionFrequencyRef.current.kind
+              }
+            })
+          }).catch(() => undefined);
+        }
+
+        setStage("receipt");
+        return;
+      }
+
       setSessionStartedAt(null);
+      sessionStartedAtRef.current = null;
       setStage("lost");
     },
     [setStage]
+  );
+
+  const applyViolation = useCallback(
+    (result: ModerationResult) => {
+      setWarning(result);
+      if (result.status === "block") {
+        setViolationCount((current) => {
+          const next = current + 1;
+          violationCountRef.current = next;
+          if (next >= 2) {
+            void finishSession(mRef.current.system.safetyEnded);
+          }
+          return next;
+        });
+      }
+    },
+    [finishSession]
+  );
+
+  const enterChat = useCallback(
+    (nextPartnerLabel: string, frequency: Frequency) => {
+      const intro = buildIntroMessage(frequency, mRef.current);
+      const synaptic = buildSynapticMessage(computeSynapticScore(frequency, mode, tone), frequency, mRef.current);
+      const collisionNotice = collisionWindowRef.current ? buildSystemMessage(mRef.current.system.collisionOverlap) : null;
+      setPartnerLabel(nextPartnerLabel);
+      const startedAt = Date.now();
+      setSessionStartedAt(startedAt);
+      sessionStartedAtRef.current = startedAt;
+      sessionSealPayloadRef.current = `${frequency.id}:${startedAt}:${nextPartnerLabel}`;
+      sessionFrequencyRef.current = frequency;
+      sessionToneRef.current = tone;
+      setQueueStartedAt(null);
+      setMessages((current) => {
+        const alreadyPresent = current.some((message) => message.sender === "system" && message.text === intro.text);
+        if (alreadyPresent) {
+          return current;
+        }
+
+        const nonSystemMessages = current.filter((message) => message.sender !== "system");
+        const seed = [
+          intro,
+          ...(collisionNotice ? [collisionNotice] : []),
+          ...(synaptic ? [synaptic] : []),
+          ...nonSystemMessages
+        ];
+        return seed;
+      });
+      setStage("chat");
+    },
+    [mode, setStage, tone]
+  );
+
+  const markQueued = useCallback(() => {
+    setSearchPhase("queued");
+    setQueueStartedAt((current) => current ?? Date.now());
+    setConnectionStep(undefined);
+  }, []);
+
+  useEffect(() => {
+    if (searchPhase !== "connecting" && searchPhase !== "queued") {
+      return;
+    }
+
+    const steps = mRef.current.connectionSteps;
+    let stepIndex = 0;
+    setConnectionStep(steps[stepIndex]);
+
+    const intervalId = window.setInterval(() => {
+      stepIndex = Math.min(stepIndex + 1, steps.length - 1);
+      setConnectionStep(steps[stepIndex]);
+    }, 1400);
+
+    return () => window.clearInterval(intervalId);
+  }, [searchPhase]);
+
+  const clearEngine = useCallback(() => {
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
+    engineRef.current = null;
+  }, []);
+
+  const terminate = useCallback(
+    async (reason?: string) => {
+      await finishSession(reason);
+    },
+    [finishSession]
   );
 
   const cancelWaiting = useCallback(async () => {
@@ -178,24 +291,16 @@ export function useSignalSession({
 
     resetSessionVisuals();
     resetWarnings();
-    setStage("frequency");
-  }, [resetSessionVisuals, resetWarnings, setStage]);
+  }, [resetSessionVisuals, resetWarnings]);
 
-  const connect = useCallback(async () => {
-    if (!activeFrequency) {
+  const commitSearch = useCallback(async () => {
+    const pending = pendingConnectRef.current;
+    if (!pending?.frequency || searchCommittedRef.current) {
       return;
     }
 
-    resetSessionVisuals();
-    setStage("connecting");
-    setConnectionIndex(0);
-    resetWarnings();
-
-    const steps = mRef.current.connectionSteps;
-    for (let i = 0; i < steps.length; i += 1) {
-      setConnectionIndex(i);
-      await wait(820);
-    }
+    searchCommittedRef.current = true;
+    const { frequency, mode: connectMode = mode, tone: connectTone = tone } = pending;
 
     try {
       const anonTokenHash = await ensureAnonTokenHash();
@@ -205,12 +310,12 @@ export function useSignalSession({
       unsubscribeRef.current?.();
       unsubscribeRef.current = engine.subscribe((event) => {
         if (event.type === "matched") {
-          enterChat(event.partnerLabel, activeFrequency);
+          enterChat(event.partnerLabel, frequency);
           return;
         }
 
         if (event.type === "queued") {
-          setStage("waiting");
+          markQueued();
           return;
         }
 
@@ -229,23 +334,19 @@ export function useSignalSession({
           return;
         }
 
-        setTyping(false);
-        setLatestWebRtcSignal(null);
-        setDisconnectReason(event.reason ?? null);
-        setSessionStartedAt(null);
-        setStage("lost");
+        void finishSession(event.reason ?? mRef.current.system.sessionClosed);
       });
 
       const result = await engine.connect({
         anonId: anonTokenHash,
-        frequency: activeFrequency,
-        mode,
-        tone,
+        frequency,
+        mode: connectMode,
+        tone: connectTone,
         locale: localeRef.current
       });
 
       if (result.status === "matched" && result.partnerLabel) {
-        enterChat(result.partnerLabel, activeFrequency);
+        enterChat(result.partnerLabel, frequency);
         return;
       }
 
@@ -258,16 +359,92 @@ export function useSignalSession({
           createdAt: Date.now()
         }
       ]);
-      setStage("waiting");
+      markQueued();
     } catch (error) {
       const message = error instanceof Error ? error.message : mRef.current.system.noSignalLocked;
       setDisconnectReason(message);
       setStage("lost");
     }
-  }, [activeFrequency, ensureAnonTokenHash, enterChat, mode, resetSessionVisuals, resetWarnings, setConnectionIndex, setStage, tone]);
+  }, [ensureAnonTokenHash, enterChat, finishSession, markQueued, mode, setStage, tone]);
+
+  const connect = useCallback(
+    async (overrides?: ConnectOverrides) => {
+      const frequency = overrides?.frequency ?? activeFrequency;
+      const connectMode = overrides?.mode ?? mode;
+      const connectTone = overrides?.tone ?? tone;
+
+      if (!frequency) {
+        return;
+      }
+
+      resetSessionVisuals();
+      setStage("searching");
+      setSearchPhase("connecting");
+      setQueueStartedAt(Date.now());
+      resetWarnings();
+      sessionToneRef.current = connectTone;
+      collisionWindowRef.current = Boolean(overrides?.collisionWindow);
+      searchCommittedRef.current = false;
+      pendingConnectRef.current = { frequency, mode: connectMode, tone: connectTone, collisionWindow: overrides?.collisionWindow };
+      void commitSearch();
+    },
+    [activeFrequency, commitSearch, mode, resetSessionVisuals, resetWarnings, setStage, tone]
+  );
 
   const sendText = useCallback(
     async (text: string) => {
+      const terminalContext = {
+        messages: messagesRef.current,
+        witnessInsights: mRef.current.witness.insights,
+        sessionStartedAt: sessionStartedAtRef.current,
+        sealPayload: sessionSealPayloadRef.current ?? undefined,
+        copy: mRef.current.terminal
+      };
+
+      const command = parseTerminalCommand(text);
+      if (command || text.trim().startsWith("/")) {
+        const result = runTerminalCommand(text, terminalContext);
+        if (!result.handled) {
+          return false;
+        }
+
+        if (result.witness) {
+          setWitnessReport(result.witness);
+          return true;
+        }
+
+        if (command === "void") {
+          const lastSelf = [...messagesRef.current].reverse().find((message) => message.sender === "self");
+          if (lastSelf) {
+            setMessages(removeLastSelfMessage(messagesRef.current));
+          }
+        } else if (command === "pulse") {
+          setMessages((current) => [...current, createPulseMessage(terminalContext.copy.pulse)]);
+        }
+
+        if (command && command !== "witness") {
+          const systemText = terminalSystemMessage(command, terminalContext);
+          setMessages((current) => {
+            const last = current.at(-1);
+            if (last?.sender === "system" && last.text === systemText) {
+              return current;
+            }
+            return [...current, buildSystemMessage(systemText)];
+          });
+
+          if (command !== "void" && engineRef.current) {
+            void engineRef.current.sendTerminal(command, systemText);
+          }
+        } else if (text.trim().startsWith("/") && !command) {
+          const systemText = terminalContext.copy.unknown;
+          setMessages((current) => [...current, buildSystemMessage(systemText)]);
+        }
+
+        if (result.suppressSend) {
+          return true;
+        }
+      }
+
       if (!engineRef.current) {
         return false;
       }
@@ -453,6 +630,15 @@ export function useSignalSession({
     setWarning(null);
   }, []);
 
+  const dismissWitness = useCallback(() => {
+    setWitnessReport(null);
+  }, []);
+
+  const closeReceipt = useCallback(() => {
+    setSessionReceipt(null);
+    setStage("lost");
+  }, [setStage]);
+
   return {
     messages,
     typing,
@@ -461,6 +647,11 @@ export function useSignalSession({
     disconnectReason,
     latestWebRtcSignal,
     sessionStartedAt,
+    searchPhase,
+    queueStartedAt,
+    connectionStep,
+    sessionReceipt,
+    witnessReport,
     resetSessionVisuals,
     resetWarnings,
     clearEngine,
@@ -477,6 +668,8 @@ export function useSignalSession({
     appendSystemMessage,
     endSignal: terminate,
     cancelWaiting,
-    dismissWarning
+    dismissWarning,
+    dismissWitness,
+    closeReceipt
   };
 }

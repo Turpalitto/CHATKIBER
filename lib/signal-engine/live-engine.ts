@@ -289,6 +289,19 @@ export function createLiveSignalEngine(): SignalEngine {
         };
       }
     },
+    async sendTerminal(command: string, systemText: string) {
+      if (!sessionId || !activeAnonHash) {
+        return;
+      }
+
+      await postJson<{ status: string }>("/api/signal/send", {
+        sessionId,
+        anonTokenHash: activeAnonHash,
+        kind: "terminal",
+        text: command,
+        systemText
+      });
+    },
     async sendVoicePulse(level: number) {
       if (!sessionId || !activeAnonHash) {
         return;

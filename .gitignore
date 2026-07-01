@@ -39,3 +39,5 @@ Thumbs.db
 
 # config cache
 .config/
+
+.vercel

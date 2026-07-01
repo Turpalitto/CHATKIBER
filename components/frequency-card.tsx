@@ -1,6 +1,6 @@
 "use client";
 
-import { useI18n } from "@/components/locale-provider";
+import { useFutureCopy } from "@/hooks/useFutureCopy";
 import { Frequency } from "@/lib/types";
 
 interface FrequencyCardProps {
@@ -12,7 +12,7 @@ interface FrequencyCardProps {
 }
 
 export function FrequencyCard({ title, eyebrow, frequency, highlight = false, onClick }: FrequencyCardProps) {
-  const { m } = useI18n();
+  const m = useFutureCopy();
 
   return (
     <button

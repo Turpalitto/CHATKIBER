@@ -18,13 +18,29 @@ export interface Messages {
     online: string;
     audioOn: string;
     audioOff: string;
+    liveBadge: string;
+    demoBadge: string;
+    stepLabel: string;
   };
   landing: {
     eyebrow: string;
     subtitle: string;
+    pitch: string;
     peopleOnline: string;
+    quickChannels: string;
+    rulesLine: string;
+    comfort: string;
+    safetyShort: string;
+    networkBusy: string;
+    networkNormal: string;
+    networkQuiet: string;
+    modeLabel: string;
+    languageNote: string;
+    channelHint: string;
     searching: string;
     connect: string;
+    quickConnect: string;
+    customize: string;
     footer: string;
   };
   onboarding: {
@@ -37,7 +53,10 @@ export interface Messages {
   frequency: {
     eyebrow: string;
     title: string;
+    titleShort: string;
     description: string;
+    descriptionShort: string;
+    back: string;
     dailyTitle: string;
     dailyEyebrow: string;
     randomTitle: string;
@@ -47,6 +66,13 @@ export interface Messages {
     enterSignal: string;
     frequencyLabel: string;
     randomSignal: string;
+    channelsTitle: string;
+    channelsSubtitle: string;
+    channelsSearch: string;
+    channelsPopular: string;
+    channelsAll: string;
+    channelsEmpty: string;
+    listeners: string;
   };
   intent: {
     mode: string;
@@ -54,21 +80,112 @@ export interface Messages {
     back: string;
     footer: string;
     connect: string;
+    presetsTitle: string;
+    customize: string;
+    hideCustomize: string;
   };
-  connection: {
-    routing: string;
-    footer: string;
-    stable: string;
-    pending: string;
+  search: {
+    eyebrow: string;
+    titleConnecting: string;
+    titleQueued: string;
+    titleTuning: string;
+    subtitle: string;
+    subtitleTuning: string;
+    privacyNote: string;
+    hint: string;
+    elapsed: string;
+    cancel: string;
+    collisionBadge: string;
+    predictedEta?: string;
+    meshTitle: string;
+    meshFooter: string;
   };
-  waiting: {
+  passport: {
     eyebrow: string;
     title: string;
-    matchNote: string;
-    privacyNote: string;
-    liveNote: string;
-    sameBrowserHint: string;
-    cancel: string;
+    moods: Record<string, string>;
+    typicalTone: string;
+    typicalMode: string;
+    yourSignal: string;
+    activity: string;
+    avgDuration: string;
+    minutes: string;
+    interference: string;
+  };
+  tuning: {
+    eyebrow: string;
+    adjust: string;
+    aligned: string;
+    hold: string;
+    holding: string;
+    locked: string;
+    skip: string;
+    targetBand: string;
+  };
+  receipt: {
+    eyebrow: string;
+    title: string;
+    titleShort: string;
+    duration: string;
+    leaveNote: string;
+    saving: string;
+    silence: string;
+    alignment: string;
+    alignments: Record<"aligned" | "drifted" | "unknown", string>;
+    protocol: string;
+    protocolClear: string;
+    protocolBreach: string;
+    expires: string;
+    continue: string;
+    thankYou: string;
+    feedbackQuestion: string;
+    feedbackThanks: string;
+    again: string;
+    summaries: string[];
+  };
+  deadDrop: {
+    eyebrow: string;
+    description: string;
+    placeholder: string;
+    leave: string;
+    previous: string;
+  };
+  terminal: {
+    hint: string;
+    drift: string;
+    pulse: string;
+    seal: string;
+    void: string;
+    voidEmpty: string;
+    unknown: string;
+    resonance: string;
+    lattice: string;
+  };
+  witness: {
+    eyebrow: string;
+    title: string;
+    you: string;
+    peer: string;
+    questions: string;
+    pauses: string;
+    balance: string;
+    balances: Record<"giving" | "receiving" | "balanced", string>;
+    insights: string[];
+    close: string;
+  };
+  decay: {
+    unstable: string;
+    degraded: string;
+    critical: string;
+    clearing: string;
+  };
+  network: {
+    blackout: string;
+    collision: string;
+    bodies: {
+      blackout: string;
+      collision: string;
+    };
   };
   lost: {
     eyebrow: string;
@@ -100,9 +217,15 @@ export interface Messages {
     safetyEyebrow: string;
     safetyBody: string;
     sessionRemaining: string;
+    sessionLeft: string;
     sessionExpired: string;
+    starterEyebrow: string;
+    starterHint: string;
+    safetyShort: string;
+    voiceOptional: string;
     showTools: string;
     hideTools: string;
+    voiceTitle: string;
   };
   holdToTalk: {
     title: string;
@@ -113,6 +236,7 @@ export interface Messages {
   system: {
     frequencyDaily: string;
     frequencyRandom: string;
+    frequencyChannel: string;
     waitingForSignal: string;
     noSignalLocked: string;
     sessionClosed: string;
@@ -125,8 +249,17 @@ export interface Messages {
     voiceSuggestion: string;
     diagnosticsCopied: string;
     noActiveSignal: string;
+    collisionOverlap: string;
+    synapticLink?: string;
   };
   connectionSteps: readonly string[];
+  intentPresets: Array<{
+    id: string;
+    label: string;
+    description: string;
+    mode: ModeOption;
+    tone: ToneOption;
+  }>;
   modeOptions: Array<OptionLabel<ModeOption>>;
   toneOptions: Array<OptionLabel<ToneOption>>;
   partnerLabels: readonly string[];
@@ -193,6 +326,8 @@ export interface Messages {
       networkQuality: string;
       hideDiagnostics: string;
       showDiagnostics: string;
+      simpleMode: string;
+      advancedMode: string;
       sharing: string;
       copyShareLink: string;
       exporting: string;
@@ -253,6 +388,105 @@ export interface Messages {
       stabilize: { title: string; body: string; action: string };
       currentIssue: { title: string; action: string };
       healthy: { title: string; body: string };
+    };
+  };
+  future: {
+    shell: {
+      tagline: string;
+      eraBadge: string;
+      eraToggleOn: string;
+      eraToggleOff: string;
+    };
+    landing: {
+      subtitle: string;
+      peopleOnline: string;
+      quickConnect: string;
+      customize: string;
+      quickChannels?: string;
+    };
+    frequency: {
+      titleShort: string;
+      descriptionShort: string;
+      dailyTitle: string;
+      randomTitle: string;
+      dailyEyebrow: string;
+      randomEyebrow: string;
+      enterSignal: string;
+      channelsTitle?: string;
+      channelsSubtitle?: string;
+      channelsSearch?: string;
+      channelsPopular?: string;
+      channelsAll?: string;
+      channelsEmpty?: string;
+    };
+    search: {
+      titleConnecting: string;
+      titleQueued: string;
+      subtitle: string;
+      collisionBadge: string;
+      predictedEta: string;
+    };
+    chat: {
+      placeholder: string;
+      connected: string;
+    };
+    receipt: {
+      titleShort: string;
+      continue: string;
+      leaveNote: string;
+    };
+    system: {
+      frequencyDaily: string;
+      frequencyRandom: string;
+      synapticLink: string;
+      collisionOverlap: string;
+    };
+    network: {
+      blackout: string;
+      collision: string;
+    };
+    terminal: {
+      hint: string;
+      resonance: string;
+      lattice: string;
+    };
+    connectionSteps: readonly string[];
+    consciousness: {
+      hudTitle: string;
+      composite: string;
+      echo: string;
+      latticeTitle: string;
+      unlinkability: string;
+      commitment: string;
+      imprintTitle: string;
+      imprintStrength: string;
+      diffusion: string;
+      dominant: string;
+      noovector: string;
+      multiverse: string;
+      echoFlash: string;
+      trajectory: {
+        ascending: string;
+        stable: string;
+        diverging: string;
+        dormant: string;
+      };
+      axes: {
+        depth: string;
+        tempo: string;
+        entropy: string;
+        coherence: string;
+        luminance: string;
+      };
+      predictions: {
+        "noosphere.calibrating": string;
+        "noosphere.deepen": string;
+        "noosphere.catalyst": string;
+        "noosphere.drift": string;
+        "noosphere.fork": string;
+        "noosphere.ascend": string;
+        "noosphere.stable": string;
+      };
     };
   };
 }

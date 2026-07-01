@@ -1,7 +1,11 @@
 export type ModeOption = "listen" | "talk" | "both";
 export type ToneOption = "calm" | "deep" | "funny" | "debate" | "random";
-export type FrequencyKind = "daily" | "random";
-export type AppStage = "landing" | "onboarding" | "frequency" | "intent" | "connecting" | "waiting" | "chat" | "lost";
+export type FrequencyKind = "daily" | "random" | "channel";
+export type AppStage = "landing" | "onboarding" | "frequency" | "intent" | "searching" | "chat" | "receipt" | "lost";
+export type SearchPhase = "connecting" | "queued";
+export type NetworkEventKind = "blackout" | "collision";
+export type WitnessBalance = "giving" | "receiving" | "balanced";
+export type ToneAlignment = "aligned" | "drifted" | "unknown";
 
 export interface Frequency {
   id: string;
@@ -9,6 +13,86 @@ export interface Frequency {
   prompt: string;
   kind: FrequencyKind;
   dateKey: string;
+  channelId?: string;
+  channelLabel?: string;
+  meshNode?: "plex" | "echo" | "void" | "soft" | "dark";
+}
+
+export interface FrequencyPassport {
+  dateKey: string;
+  frequencyNumber: number;
+  kind: FrequencyKind;
+  moodTags: string[];
+  dominantTone: ToneOption;
+  dominantMode: ModeOption;
+  avgSessionMinutes: number;
+  interferenceLevel: 1 | 2 | 3 | 4 | 5;
+  sessionCount: number;
+}
+
+export interface SessionReceipt {
+  token: string;
+  exportedAt: number;
+  expiresAt: number;
+  durationSeconds: number;
+  silenceRatio: number;
+  toneAlignment: ToneAlignment;
+  protocolBreach: boolean;
+  summaryLine: string;
+  selfMessages: number;
+  peerMessages: number;
+  frequencyLabel: string;
+  memoryImprint?: MemoryImprint;
+}
+
+export interface MemoryImprint {
+  imprintStrength: number;
+  diffusionRate: number;
+  latticeCommitment: string;
+  resonanceComposite: number;
+  dominantAxis: "depth" | "tempo" | "entropy" | "coherence" | "luminance";
+  trajectory: "ascending" | "stable" | "diverging" | "dormant";
+  echoMoments: number;
+  noovector: [number, number, number];
+  prediction: string;
+}
+
+export interface DeadDrop {
+  body: string;
+  createdAt: number;
+  expiresAt: number;
+  frequencyNumber: number;
+  dateKey: string;
+}
+
+export interface WitnessReport {
+  selfMessages: number;
+  peerMessages: number;
+  questionRatio: number;
+  longPauseCount: number;
+  balance: WitnessBalance;
+  insight: string;
+}
+
+export interface NetworkEvent {
+  kind: NetworkEventKind;
+  title: string;
+  body: string;
+  active: boolean;
+  startsAt: number;
+  endsAt: number;
+  constraints?: {
+    modes?: ModeOption[];
+    tones?: ToneOption[];
+    frequencyKind?: FrequencyKind;
+    collisionOverlapMs?: number;
+  };
+}
+
+export interface TerminalCommandResult {
+  handled: boolean;
+  suppressSend?: boolean;
+  witness?: WitnessReport;
 }
 
 export interface Message {

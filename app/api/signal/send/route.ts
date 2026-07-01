@@ -10,6 +10,7 @@ export async function POST(request: NextRequest) {
     const anonTokenHash = typeof body?.anonTokenHash === "string" ? body.anonTokenHash : "";
     const kind = body?.kind as SignalRelayKind | undefined;
     const text = typeof body?.text === "string" ? body.text : undefined;
+    const systemText = typeof body?.systemText === "string" ? body.systemText : undefined;
     const active = typeof body?.active === "boolean" ? body.active : undefined;
     const level = typeof body?.level === "number" ? body.level : undefined;
     const signal = body?.signal as WebRtcSignalMessage | undefined;
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
       anonTokenHash,
       kind,
       text,
+      systemText,
       active,
       level,
       signal

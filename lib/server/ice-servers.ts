@@ -56,7 +56,13 @@ export function getServerIceServers() {
   }
 
   if (servers.length === 0) {
-    return [{ urls: ["stun:stun.l.google.com:19302"] }];
+    return [
+      { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }
+    ];
+  }
+
+  if (turnUrls.length === 0 && stunUrls.length === 1) {
+    servers[0] = { urls: [stunUrls[0], "stun:stun1.l.google.com:19302"] };
   }
 
   return servers;

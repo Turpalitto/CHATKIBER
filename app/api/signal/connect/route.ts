@@ -19,6 +19,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ reason: "Invalid connect payload." }, { status: 400 });
     }
 
+    if (frequency.kind === "channel" && !frequency.channelId) {
+      return NextResponse.json({ reason: "Channel id required for thematic matching." }, { status: 400 });
+    }
+
     const rate = enforceRateLimit(request, "signal-connect", 12, 60_000, anonTokenHash);
     if (!rate.ok) {
       return NextResponse.json({ reason: "Too many connect attempts." }, { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } });
@@ -31,7 +35,8 @@ export async function POST(request: NextRequest) {
       p_tone: tone,
       p_frequency_kind: frequency.kind,
       p_frequency_number: frequency.number,
-      p_frequency_prompt: frequency.prompt
+      p_frequency_prompt: frequency.prompt,
+      p_channel_id: frequency.channelId ?? null
     });
 
     if (error) {

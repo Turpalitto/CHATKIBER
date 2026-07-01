@@ -7,6 +7,7 @@ export type SignalRelayKind =
   | "text"
   | "typing"
   | "voice-pulse"
+  | "terminal"
   | "disconnect"
   | "webrtc-request-offer"
   | "webrtc-offer"
@@ -527,6 +528,7 @@ export async function relaySignalPayload(params: {
   anonTokenHash: string;
   kind: SignalRelayKind;
   text?: string;
+  systemText?: string;
   active?: boolean;
   level?: number;
   signal?: WebRtcSignalMessage;
@@ -586,6 +588,21 @@ export async function relaySignalPayload(params: {
     await queueSignalEvent(params.sessionId, params.anonTokenHash, context.peer.anon_token_hash, "voice-pulse", {
       level,
       text: level > 0.5 ? "Voice burst transmitted." : "Soft transmission sent.",
+      createdAt: Date.now()
+    });
+    return { ok: true as const };
+  }
+
+  if (params.kind === "terminal") {
+    const command = typeof params.text === "string" ? params.text.trim() : "";
+    const systemText = typeof params.systemText === "string" ? params.systemText.trim() : "";
+    if (!command || !systemText) {
+      throw new Error("Terminal relay requires command and system text.");
+    }
+
+    await queueSignalEvent(params.sessionId, params.anonTokenHash, context.peer.anon_token_hash, "terminal", {
+      command,
+      text: systemText,
       createdAt: Date.now()
     });
     return { ok: true as const };

@@ -13,7 +13,9 @@ describe("getServerIceServers", () => {
     delete process.env.SIGNAL_STUN_URLS;
     delete process.env.SIGNAL_TURN_URLS;
     const servers = getServerIceServers();
-    expect(servers[0]?.urls).toContain("stun:stun.l.google.com:19302");
+    const urls = Array.isArray(servers[0]?.urls) ? servers[0]?.urls : [servers[0]?.urls];
+    expect(urls).toContain("stun:stun.l.google.com:19302");
+    expect(urls).toContain("stun:stun1.l.google.com:19302");
   });
 
   it("builds dynamic TURN credentials when secret is set", () => {

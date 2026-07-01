@@ -16,6 +16,7 @@ import { Waveform } from "./waveform";
 
 interface VoiceLinkPanelProps {
   enabled: boolean;
+  decayFactor?: number;
   incomingSignal: WebRtcSignalMessage | null;
   onSendSignal: (signal: WebRtcSignalMessage) => void | Promise<void>;
   onModerateTranscript: (transcript: string) => Promise<ModerationResult>;
@@ -63,7 +64,7 @@ function turnKey(hasTurnConfigured: boolean, relayDetected: boolean) {
   return relayDetected ? "relayActive" : "configured";
 }
 
-export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModerateTranscript, onReportQosSample, onLoadQosHistory, onFetchRecommendations, onExportDiagnostics, onCreateShare, onSystemNotice }: VoiceLinkPanelProps) {
+export function VoiceLinkPanel({ enabled, decayFactor = 0, incomingSignal, onSendSignal, onModerateTranscript, onReportQosSample, onLoadQosHistory, onFetchRecommendations, onExportDiagnostics, onCreateShare, onSystemNotice }: VoiceLinkPanelProps) {
   const { m } = useI18n();
   const p = m.voice.panel;
   const voice = useWebRtcGroundwork({
@@ -75,12 +76,64 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
     onLoadQosHistory,
     onFetchRecommendations
   });
+
+  useEffect(() => {
+    const audio = voice.remoteAudioRef.current;
+    if (!audio) {
+      return;
+    }
+    const baseVolume = voice.outputVolume;
+    audio.volume = Math.max(0.08, baseVolume * (1 - decayFactor * 0.55));
+  }, [decayFactor, voice.outputVolume, voice.remoteAudioRef]);
+
+  useEffect(() => {
+    if (decayFactor < 0.4) {
+      return;
+    }
+
+    const ctx = new AudioContext();
+    const bufferSize = 2 * ctx.sampleRate;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let index = 0; index < bufferSize; index += 1) {
+      data[index] = (Math.random() * 2 - 1) * 0.35;
+    }
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.value = 820 + decayFactor * 420;
+    filter.Q.value = 0.85;
+
+    const gain = ctx.createGain();
+    const intensity = Math.min(1, (decayFactor - 0.4) / 0.6);
+    gain.gain.value = intensity * 0.1;
+
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    source.start();
+
+    return () => {
+      source.stop();
+      void ctx.close();
+    };
+  }, [decayFactor]);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [advancedMode, setAdvancedMode] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [sharing, setSharing] = useState(false);
   const noticeKeyRef = useRef("");
 
   useEffect(() => {
+    if (!advancedMode) {
+      setShowDiagnostics(false);
+      return;
+    }
+
     const preferred = getDiagnosticsExpandedPreference();
     if (typeof window !== "undefined" && window.matchMedia("(min-width: 640px)").matches) {
       setShowDiagnostics(true);
@@ -88,7 +141,7 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
     }
 
     setShowDiagnostics(preferred);
-  }, []);
+  }, [advancedMode]);
 
   const toggleDiagnostics = () => {
     setShowDiagnostics((current) => {
@@ -173,133 +226,147 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
       <h3 className="display-font mt-2 text-lg text-white">{p.title}</h3>
       <p className="mt-3 text-sm leading-7 text-white/58">{enabled ? p.liveEnabled : p.liveDisabled}</p>
 
-      <div className="mt-4 rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-xs uppercase tracking-[0.22em] text-white/58">
+      <div className="mt-4 rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-xs font-medium tracking-[0.08em] text-white/58">
         {p.statusPrefix}{" "}
         <span className="text-cyan-100/85">{m.voice.status[voice.status] ?? voice.status}</span>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-white/54">
-        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-          <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.healthScore}</div>
-          <div className="mt-1 text-lg text-white/88">{voice.healthScore}</div>
-        </div>
-        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-          <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.serverAlerts}</div>
-          <div className="mt-1 text-white/82">{voice.qosAlerts.length}</div>
-        </div>
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setAdvancedMode((current) => !current)}
+          className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[11px] font-medium tracking-[0.06em] text-white/70 transition hover:border-cyan-300/20 hover:text-cyan-100"
+        >
+          {advancedMode ? p.simpleMode : p.advancedMode}
+        </button>
       </div>
 
-      {voice.qosAlerts.length > 0 ? (
-        <div className="mt-4 space-y-2">
-          {voice.qosAlerts.slice(0, 3).map((alert) => (
-            <div
-              key={alert.code}
-              className={`rounded-2xl border px-3 py-3 text-sm leading-6 ${
-                alert.level === "critical"
-                  ? "border-red-400/18 bg-red-400/10 text-red-100/90"
-                  : "border-orange-300/18 bg-orange-300/10 text-white/76"
-              }`}
-            >
-              <div className="text-[10px] uppercase tracking-[0.22em] opacity-80">{alert.code}</div>
-              <div className="mt-1">{alert.message}</div>
+      {advancedMode ? (
+        <>
+          <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-white/54">
+            <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
+              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.healthScore}</div>
+              <div className="mt-1 text-lg text-white/88">{voice.healthScore}</div>
             </div>
-          ))}
-        </div>
+            <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
+              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">{p.serverAlerts}</div>
+              <div className="mt-1 text-white/82">{voice.qosAlerts.length}</div>
+            </div>
+          </div>
+
+          {voice.qosAlerts.length > 0 ? (
+            <div className="mt-4 space-y-2">
+              {voice.qosAlerts.slice(0, 3).map((alert) => (
+                <div
+                  key={alert.code}
+                  className={`rounded-2xl border px-3 py-3 text-sm leading-6 ${
+                    alert.level === "critical"
+                      ? "border-red-400/18 bg-red-400/10 text-red-100/90"
+                      : "border-orange-300/18 bg-orange-300/10 text-white/76"
+                  }`}
+                >
+                  <div className="text-[10px] uppercase tracking-[0.22em] opacity-80">{alert.code}</div>
+                  <div className="mt-1">{alert.message}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-xs text-white/56">
+              <div className="mb-2 uppercase tracking-[0.22em] text-white/34">{p.inputDevice}</div>
+              <select
+                value={voice.selectedInputDeviceId}
+                onChange={(event) => void voice.selectInputDevice(event.target.value)}
+                className="w-full rounded-xl border border-white/8 bg-black/20 px-3 py-2 text-sm text-white outline-none"
+              >
+                {voice.inputDevices.map((device) => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-xs text-white/56">
+              <div className="mb-2 uppercase tracking-[0.22em] text-white/34">{p.outputDevice}</div>
+              <select
+                value={voice.selectedOutputDeviceId}
+                onChange={(event) => void voice.selectOutputDevice(event.target.value)}
+                disabled={!voice.outputRoutingSupported || voice.outputDevices.length === 0}
+                className="w-full rounded-xl border border-white/8 bg-black/20 px-3 py-2 text-sm text-white outline-none disabled:opacity-40"
+              >
+                {voice.outputDevices.map((device) => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-xs text-white/56">
+              <div className="mb-2 flex items-center justify-between uppercase tracking-[0.22em] text-white/34">
+                <span>{p.micGain}</span>
+                <span>{voice.inputGain.toFixed(2)}×</span>
+              </div>
+              <input
+                type="range"
+                min="0.6"
+                max="2"
+                step="0.05"
+                value={voice.inputGain}
+                onChange={(event) => voice.setInputGain(Number(event.target.value))}
+                className="w-full accent-cyan-300"
+              />
+            </label>
+
+            <label className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-xs text-white/56">
+              <div className="mb-2 flex items-center justify-between uppercase tracking-[0.22em] text-white/34">
+                <span>{p.outputVolume}</span>
+                <span>{Math.round(voice.outputVolume * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={voice.outputVolume}
+                onChange={(event) => voice.setOutputVolume(Number(event.target.value))}
+                className="w-full accent-violet-300"
+              />
+            </label>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => void voice.testInputDevice()}
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.26em] text-white/72 transition hover:border-cyan-300/20 hover:text-cyan-100"
+            >
+              {voice.testingInput ? p.testingMic : p.testMic}
+            </button>
+            <button
+              type="button"
+              onClick={() => void voice.testOutputDevice()}
+              disabled={!voice.outputRoutingSupported && voice.outputDevices.length === 0}
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.26em] text-white/72 transition hover:border-cyan-300/20 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {voice.testingOutput ? p.testingOutput : p.testSpeaker}
+            </button>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 text-xs uppercase tracking-[0.18em]">
+            <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-white/58">
+              {p.you} <span className="text-cyan-100/85">{m.voice.presence[voice.localPresence] ?? voice.localPresence}</span>
+            </div>
+            <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-white/58">
+              {p.peer} <span className="text-violet-100/85">{m.voice.presence[voice.remotePresence] ?? voice.remotePresence}</span>
+            </div>
+          </div>
+        </>
       ) : null}
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <label className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-xs text-white/56">
-          <div className="mb-2 uppercase tracking-[0.22em] text-white/34">{p.inputDevice}</div>
-          <select
-            value={voice.selectedInputDeviceId}
-            onChange={(event) => void voice.selectInputDevice(event.target.value)}
-            className="w-full rounded-xl border border-white/8 bg-black/20 px-3 py-2 text-sm text-white outline-none"
-          >
-            {voice.inputDevices.map((device) => (
-              <option key={device.deviceId} value={device.deviceId}>
-                {device.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-xs text-white/56">
-          <div className="mb-2 uppercase tracking-[0.22em] text-white/34">{p.outputDevice}</div>
-          <select
-            value={voice.selectedOutputDeviceId}
-            onChange={(event) => void voice.selectOutputDevice(event.target.value)}
-            disabled={!voice.outputRoutingSupported || voice.outputDevices.length === 0}
-            className="w-full rounded-xl border border-white/8 bg-black/20 px-3 py-2 text-sm text-white outline-none disabled:opacity-40"
-          >
-            {voice.outputDevices.map((device) => (
-              <option key={device.deviceId} value={device.deviceId}>
-                {device.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <label className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-xs text-white/56">
-          <div className="mb-2 flex items-center justify-between uppercase tracking-[0.22em] text-white/34">
-            <span>{p.micGain}</span>
-            <span>{voice.inputGain.toFixed(2)}×</span>
-          </div>
-          <input
-            type="range"
-            min="0.6"
-            max="2"
-            step="0.05"
-            value={voice.inputGain}
-            onChange={(event) => voice.setInputGain(Number(event.target.value))}
-            className="w-full accent-cyan-300"
-          />
-        </label>
-
-        <label className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-xs text-white/56">
-          <div className="mb-2 flex items-center justify-between uppercase tracking-[0.22em] text-white/34">
-            <span>{p.outputVolume}</span>
-            <span>{Math.round(voice.outputVolume * 100)}%</span>
-          </div>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={voice.outputVolume}
-            onChange={(event) => voice.setOutputVolume(Number(event.target.value))}
-            className="w-full accent-violet-300"
-          />
-        </label>
-      </div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={() => void voice.testInputDevice()}
-          className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.26em] text-white/72 transition hover:border-cyan-300/20 hover:text-cyan-100"
-        >
-          {voice.testingInput ? p.testingMic : p.testMic}
-        </button>
-        <button
-          type="button"
-          onClick={() => void voice.testOutputDevice()}
-          disabled={!voice.outputRoutingSupported && voice.outputDevices.length === 0}
-          className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.26em] text-white/72 transition hover:border-cyan-300/20 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {voice.testingOutput ? p.testingOutput : p.testSpeaker}
-        </button>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-3 text-xs uppercase tracking-[0.18em]">
-        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-white/58">
-          {p.you} <span className="text-cyan-100/85">{m.voice.presence[voice.localPresence] ?? voice.localPresence}</span>
-        </div>
-        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-white/58">
-          {p.peer} <span className="text-violet-100/85">{m.voice.presence[voice.remotePresence] ?? voice.remotePresence}</span>
-        </div>
-      </div>
 
       <div className="mt-4 grid gap-3">
         <button
@@ -311,24 +378,26 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
           {actionLabel}
         </button>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => void voice.retryVoiceLink()}
-            disabled={!enabled || voice.status === "priming"}
-            className="rounded-full border border-violet-400/20 bg-violet-400/10 px-4 py-3 text-xs uppercase tracking-[0.26em] text-violet-50 transition hover:bg-violet-400/14 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {p.retryVoice}
-          </button>
-          <button
-            type="button"
-            onClick={() => void voice.forceIceRestart()}
-            disabled={!enabled || !voice.micReady}
-            className="rounded-full border border-orange-300/20 bg-orange-300/10 px-4 py-3 text-xs uppercase tracking-[0.26em] text-orange-50 transition hover:bg-orange-300/14 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {p.forceIceRestart}
-          </button>
-        </div>
+        {advancedMode ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => void voice.retryVoiceLink()}
+              disabled={!enabled || voice.status === "priming"}
+              className="rounded-full border border-violet-400/20 bg-violet-400/10 px-4 py-3 text-xs uppercase tracking-[0.26em] text-violet-50 transition hover:bg-violet-400/14 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {p.retryVoice}
+            </button>
+            <button
+              type="button"
+              onClick={() => void voice.forceIceRestart()}
+              disabled={!enabled || !voice.micReady}
+              className="rounded-full border border-orange-300/20 bg-orange-300/10 px-4 py-3 text-xs uppercase tracking-[0.26em] text-orange-50 transition hover:bg-orange-300/14 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {p.forceIceRestart}
+            </button>
+          </div>
+        ) : null}
 
         <button
           type="button"
@@ -371,6 +440,8 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
         </button>
       </div>
 
+      {advancedMode ? (
+        <>
       <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
         <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.22em] text-white/34">
           <span>{p.localActivity}</span>
@@ -576,14 +647,6 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
         </div>
       ) : null}
 
-      {voice.error ? (
-        <div className="mt-4 rounded-2xl border border-red-400/18 bg-red-400/10 px-4 py-3 text-xs leading-6 text-red-100/90">
-          <div className="uppercase tracking-[0.22em] text-red-100/70">{p.voiceIssue}</div>
-          <div className="mt-2">{voice.error}</div>
-          {voice.permissionState === "denied" ? <div className="mt-2 text-red-50/80">{p.micDenied}</div> : null}
-        </div>
-      ) : null}
-
       <div className="mt-4">
         <VoiceTroubleshootingWizard
           enabled={enabled}
@@ -604,6 +667,16 @@ export function VoiceLinkPanel({ enabled, incomingSignal, onSendSignal, onModera
           onTestSpeaker={() => void voice.testOutputDevice()}
         />
       </div>
+        </>
+      ) : null}
+
+      {voice.error ? (
+        <div className="mt-4 rounded-2xl border border-red-400/18 bg-red-400/10 px-4 py-3 text-xs leading-6 text-red-100/90">
+          <div className="uppercase tracking-[0.22em] text-red-100/70">{p.voiceIssue}</div>
+          <div className="mt-2">{voice.error}</div>
+          {voice.permissionState === "denied" ? <div className="mt-2 text-red-50/80">{p.micDenied}</div> : null}
+        </div>
+      ) : null}
 
       <audio ref={voice.remoteAudioRef} autoPlay playsInline className="hidden" />
     </div>

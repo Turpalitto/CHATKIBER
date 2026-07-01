@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useFutureMode } from "@/components/future-mode-provider";
 import { useI18n } from "@/components/locale-provider";
+import { formatMessage } from "@/lib/i18n";
 import { SESSION_DURATION_MS } from "@/lib/signal/session-config";
 
 interface SessionTimerProps {
@@ -18,6 +20,7 @@ function formatRemaining(ms: number) {
 
 export function SessionTimer({ startedAt, onExpire }: SessionTimerProps) {
   const { m } = useI18n();
+  const { enabled: futureMode } = useFutureMode();
   const [remainingMs, setRemainingMs] = useState(SESSION_DURATION_MS);
 
   useEffect(() => {
@@ -45,14 +48,18 @@ export function SessionTimer({ startedAt, onExpire }: SessionTimerProps) {
   }
 
   const urgent = remainingMs < 5 * 60 * 1000;
+  const time = formatRemaining(remainingMs);
+  const label = futureMode
+    ? `${m.chat.sessionRemaining}: ${time}`
+    : formatMessage(m.chat.sessionLeft, { time });
 
   return (
     <div
       className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.24em] ${
         urgent ? "border-orange-300/25 bg-orange-300/10 text-orange-100" : "border-white/10 bg-white/5 text-white/60"
-      }`}
+      } ${futureMode ? "" : "normal-case tracking-normal text-xs"}`}
     >
-      {m.chat.sessionRemaining}: {formatRemaining(remainingMs)}
+      {label}
     </div>
   );
 }

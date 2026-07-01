@@ -41,6 +41,20 @@ export function dispatchRelayEvent(event: RelayEventRow, emit: (event: EngineEve
     return;
   }
 
+  if (event.event_type === "terminal") {
+    emit({
+      type: "message",
+      message: {
+        id: uid("msg"),
+        sender: "peer",
+        type: "system",
+        text: typeof event.payload.text === "string" ? event.payload.text : "",
+        createdAt: typeof event.payload.createdAt === "number" ? event.payload.createdAt : Date.now()
+      }
+    });
+    return;
+  }
+
   if (event.event_type === "disconnect") {
     emit({
       type: "disconnected",

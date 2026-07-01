@@ -14,6 +14,12 @@
     "push:vercel-env": "node scripts/push-vercel-env.mjs",
     "apply:schema": "node scripts/apply-schema.mjs",
     "apply:schema:mgmt": "node scripts/apply-schema-mgmt.mjs",
+    "apply:dead-drops": "node scripts/apply-dead-drops.mjs",
+    "apply:dead-drops:mgmt": "node scripts/apply-dead-drops-mgmt.mjs",
+    "apply:cyberbank": "node scripts/apply-cyberbank-extensions.mjs",
+    "apply:channels": "node scripts/apply-channel-matching.mjs",
+    "setup:production-env": "node scripts/setup-production-env.mjs",
+    "setup:dead-drops": "node scripts/setup-dead-drops-storage.mjs",
     "verify:supabase": "node scripts/verify-supabase.mjs"
   },
   "dependencies": {

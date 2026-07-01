@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { LocaleProvider } from "@/components/locale-provider";
+import { FutureModeProvider } from "@/components/future-mode-provider";
+import { SignalAudioProvider } from "@/components/signal-audio-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,9 +17,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ru" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body>
-        <LocaleProvider>{children}</LocaleProvider>
+        <LocaleProvider>
+          <FutureModeProvider>
+            <SignalAudioProvider>{children}</SignalAudioProvider>
+          </FutureModeProvider>
+        </LocaleProvider>
       </body>
     </html>
   );

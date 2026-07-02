@@ -18,6 +18,7 @@
     "apply:dead-drops:mgmt": "node scripts/apply-dead-drops-mgmt.mjs",
     "apply:cyberbank": "node scripts/apply-cyberbank-extensions.mjs",
     "apply:channels": "node scripts/apply-channel-matching.mjs",
+    "apply:experience": "node scripts/apply-experience-extensions.mjs",
     "setup:production-env": "node scripts/setup-production-env.mjs",
     "setup:dead-drops": "node scripts/setup-dead-drops-storage.mjs",
     "verify:supabase": "node scripts/verify-supabase.mjs"

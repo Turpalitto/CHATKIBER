@@ -226,6 +226,56 @@ export interface Messages {
     showTools: string;
     hideTools: string;
     voiceTitle: string;
+    voiceMessageLabel: string;
+  };
+  experience: {
+    reconnect: {
+      title: string;
+      trying: string;
+      retry: string;
+      dismiss: string;
+      attempt: string;
+    };
+    history: {
+      eyebrow: string;
+      title: string;
+      empty: string;
+      footer: string;
+      messages: string;
+      open: string;
+    };
+    echo: {
+      eyebrow: string;
+      description: string;
+      placeholder: string;
+      cancel: string;
+      send: string;
+      sending: string;
+      footer: string;
+      open: string;
+    };
+    matchQuality: {
+      title: string;
+    };
+    deadDropPanel: {
+      title: string;
+      leave: string;
+      placeholder: string;
+      submit: string;
+      submitting: string;
+      empty: string;
+      expires: string;
+    };
+    pwa: {
+      title: string;
+      body: string;
+      install: string;
+      dismiss: string;
+    };
+    channels: {
+      top: string;
+      create: string;
+    };
   };
   holdToTalk: {
     title: string;
@@ -403,6 +453,12 @@ export interface Messages {
       quickConnect: string;
       customize: string;
       quickChannels?: string;
+      pitch?: string;
+      rulesLine?: string;
+      modeLabel?: string;
+      comfort?: string;
+      safetyShort?: string;
+      footer?: string;
     };
     frequency: {
       titleShort: string;

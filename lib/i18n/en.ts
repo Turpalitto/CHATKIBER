@@ -249,7 +249,57 @@ export const en: Messages = {
     voiceOptional: "Voice is optional — typing is fine.",
     showTools: "Voice & info",
     hideTools: "Hide",
-    voiceTitle: "Voice"
+    voiceTitle: "Voice",
+    voiceMessageLabel: "Voice message ({duration}s)"
+  },
+  experience: {
+    reconnect: {
+      title: "Connection lost",
+      trying: "Trying to restore the link…",
+      retry: "Retry now",
+      dismiss: "End chat",
+      attempt: "Attempt {current}/{max}"
+    },
+    history: {
+      eyebrow: "History",
+      title: "Past signals",
+      empty: "No history yet. Start your first talk.",
+      footer: "Stored only on this device",
+      messages: "messages",
+      open: "History"
+    },
+    echo: {
+      eyebrow: "Frequency echo",
+      description: "Leave an anonymous note for the next person on this frequency.",
+      placeholder: "Write something meaningful…",
+      cancel: "Cancel",
+      send: "Leave echo",
+      sending: "Sending…",
+      footer: "Echoes fade after a week",
+      open: "Leave echo"
+    },
+    matchQuality: {
+      title: "How was the match?"
+    },
+    deadDropPanel: {
+      title: "Dead drop",
+      leave: "Leave anonymous note",
+      placeholder: "A short note for the next stranger…",
+      submit: "Seal note",
+      submitting: "Saving…",
+      empty: "No notes on this frequency yet",
+      expires: "Expires in {time}"
+    },
+    pwa: {
+      title: "Install SIGNAL",
+      body: "Add to home screen for quick access.",
+      install: "Install",
+      dismiss: "Not now"
+    },
+    channels: {
+      top: "Top channels",
+      create: "Create channel"
+    }
   },
   holdToTalk: {
     title: "Hold to Talk",
@@ -549,7 +599,13 @@ export const en: Messages = {
       peopleOnline: "minds in mesh",
       quickConnect: "Initiate neural link",
       customize: "Select quantum channel",
-      quickChannels: "Top 10 mesh channels"
+      quickChannels: "Top 10 mesh channels",
+      pitch: "No identity · one entanglement · one transmission",
+      rulesLine: "Anonymous · single convergence · exit anytime",
+      modeLabel: "How do you want to resonate?",
+      comfort: "Honest signal beats polished noise.",
+      safetyShort: "Mesh integrity active — end link if misaligned.",
+      footer: "One mind. One convergence. No return path."
     },
     frequency: {
       titleShort: "Quantum channel",

@@ -136,6 +136,28 @@ export function createMockSignalEngine(): SignalEngine {
         });
       }, 1500);
     },
+    async sendVoiceMessage(_audioData: string, duration: number) {
+      if (!connected) {
+        return;
+      }
+
+      const mock = getMessages(locale).mock;
+      emit({ type: "typing", active: true });
+      schedule(() => {
+        emit({ type: "typing", active: false });
+        emit({
+          type: "message",
+          message: {
+            id: uid("msg"),
+            sender: "peer",
+            type: "voice",
+            text: mock.voiceSoft,
+            audioDuration: Math.max(1, duration),
+            createdAt: Date.now()
+          }
+        });
+      }, 1800);
+    },
     async sendWebRtcSignal(signal: WebRtcSignalMessage) {
       if (!connected) {
         return;

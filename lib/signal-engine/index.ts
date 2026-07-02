@@ -37,6 +37,7 @@ export interface SignalEngine {
   sendText(text: string): Promise<EngineSendTextResult>;
   sendTerminal(command: string, systemText: string): Promise<void>;
   sendVoicePulse(level: number): Promise<void>;
+  sendVoiceMessage(audioData: string, duration: number): Promise<void>;
   sendWebRtcSignal(signal: WebRtcSignalMessage): Promise<void>;
   moderateVoiceTranscript(transcript: string): Promise<ModerationResult>;
   reportVoiceQos(sample: VoiceQosSample): Promise<VoiceQosReportResult>;

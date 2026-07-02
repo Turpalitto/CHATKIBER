@@ -7,6 +7,7 @@ export type SignalRelayKind =
   | "text"
   | "typing"
   | "voice-pulse"
+  | "voice-message"
   | "terminal"
   | "disconnect"
   | "webrtc-request-offer"
@@ -588,6 +589,23 @@ export async function relaySignalPayload(params: {
     await queueSignalEvent(params.sessionId, params.anonTokenHash, context.peer.anon_token_hash, "voice-pulse", {
       level,
       text: level > 0.5 ? "Voice burst transmitted." : "Soft transmission sent.",
+      createdAt: Date.now()
+    });
+    return { ok: true as const };
+  }
+
+  if (params.kind === "voice-message") {
+    const audioData = typeof params.text === "string" ? params.text : "";
+    const duration = typeof params.level === "number" ? params.level : 0;
+    if (!audioData) {
+      throw new Error("Voice message payload is required.");
+    }
+
+    const messageId = uid("msg");
+    await queueSignalEvent(params.sessionId, params.anonTokenHash, context.peer.anon_token_hash, "voice-message", {
+      id: messageId,
+      audioData,
+      audioDuration: duration,
       createdAt: Date.now()
     });
     return { ok: true as const };

@@ -31,7 +31,6 @@ import { MessageReactions } from "./message-reactions";
 import { VoiceMessageRecorder } from "./voice-message-recorder";
 import { VoiceMessagePlayer } from "./voice-message-player";
 import { rateLimiter } from "@/lib/rate-limiter";
-import { useSwipe } from "@/hooks/useSwipe";
 import { BookmarkButton } from "./bookmark-button";
 
 interface ChatPanelProps {
@@ -55,6 +54,7 @@ interface ChatPanelProps {
   onVoiceSystemNotice: (text: string) => void;
   onEnd: () => void;
   onSessionExpire: () => void;
+  onBookmarkMessage?: (messageText: string) => void;
 }
 
 function VoiceSection({
@@ -125,7 +125,8 @@ export function ChatPanel({
   onCreateVoiceDiagnosticsShare,
   onVoiceSystemNotice,
   onEnd,
-  onSessionExpire
+  onSessionExpire,
+  onBookmarkMessage
 }: ChatPanelProps) {
   const m = useFutureCopy();
   const { enabled: futureMode } = useFutureMode();
@@ -140,6 +141,11 @@ export function ChatPanel({
   const [voiceMessages, setVoiceMessages] = useState<Record<string, { blob: Blob; duration: number }>>({});
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const messagesRef = useRef<Message[]>(messages);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -157,7 +163,6 @@ export function ChatPanel({
       return;
     }
 
-    // Rate limiting
     if (!rateLimiter.canSend("text", 15)) {
       const remaining = rateLimiter.getRemainingTime("text");
       alert(`Слишком много сообщений. Подожди ${remaining} сек.`);
@@ -170,17 +175,45 @@ export function ChatPanel({
     }
   };
 
-  // Swipe handlers
-  const swipeRef = useSwipe({
-    onSwipeLeft: () => {
-      // Свайп влево = реакция
-      console.log("Swipe left - reaction");
-    },
-    onSwipeRight: () => {
-      // Свайп вправо = bookmark
-      console.log("Swipe right - bookmark");
+  // Swipe gestures on message list (mobile)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) {
+      return;
     }
-  });
+
+    let startX = 0;
+    let startY = 0;
+
+    const onTouchStart = (e: TouchEvent) => {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      const diffX = startX - e.changedTouches[0].clientX;
+      const diffY = startY - e.changedTouches[0].clientY;
+      if (Math.abs(diffX) <= Math.abs(diffY) || Math.abs(diffX) < 50) {
+        return;
+      }
+      if (diffX > 0) {
+        setShowTools(true);
+        return;
+      }
+      const lastPeer = [...messagesRef.current].reverse().find((message) => message.sender === "peer" && message.type === "text");
+      if (lastPeer && onBookmarkMessage) {
+        onBookmarkMessage(lastPeer.text);
+        setBookmarkedIds((current) => (current.includes(lastPeer.id) ? current : [...current, lastPeer.id]));
+      }
+    };
+
+    el.addEventListener("touchstart", onTouchStart);
+    el.addEventListener("touchend", onTouchEnd);
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [onBookmarkMessage]);
 
   // Keyboard shortcuts (расширенные)
   useEffect(() => {
@@ -375,11 +408,13 @@ export function ChatPanel({
                           ? partnerLabel
                           : m.chat.system}
                   </div>
-                  {message.type === "voice" && voiceMessages[message.id] ? (
-                    <VoiceMessagePlayer 
-                      audioBlob={voiceMessages[message.id].blob} 
-                      duration={voiceMessages[message.id].duration}
+                  {message.type === "voice" && (voiceMessages[message.id] || message.audioData) ? (
+                    <VoiceMessagePlayer
+                      audioBlob={voiceMessages[message.id]?.blob}
+                      audioData={message.audioData}
+                      duration={message.audioDuration ?? voiceMessages[message.id]?.duration ?? 0}
                       isSelf={message.sender === "self"}
+                      label={m.chat.voiceBurst}
                     />
                   ) : (
                     <div>{message.text}</div>
@@ -405,7 +440,7 @@ export function ChatPanel({
                         onClick={() => {
                           if (!bookmarkedIds.includes(message.id)) {
                             setBookmarkedIds([...bookmarkedIds, message.id]);
-                            // Можно передать в родительский компонент
+                            onBookmarkMessage?.(message.text);
                           }
                         }}
                         isBookmarked={bookmarkedIds.includes(message.id)}

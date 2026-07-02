@@ -290,3 +290,47 @@ html[data-theme="2076"] .shimmer-line {
   color: rgba(255, 235, 200, 0.95);
   box-shadow: 0 0 20px rgba(255, 210, 138, 0.12);
 }
+
+html.theme-oled,
+html.theme-oled body {
+  --bg: #000000;
+  --panel: rgba(0, 0, 0, 0.92);
+  --cyan: #7ef9ff;
+  background: #000;
+}
+
+html.theme-cyber,
+html.theme-cyber body {
+  --bg: #030712;
+  --cyan: #5bf7ff;
+  --purple: #b794ff;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(91, 247, 255, 0.14), transparent 35%),
+    radial-gradient(circle at 80% 10%, rgba(143, 92, 255, 0.18), transparent 30%),
+    #030712;
+}
+
+html.theme-warm,
+html.theme-warm body {
+  --bg: #120c08;
+  --cyan: #ffb86b;
+  --purple: #ff8f6b;
+  --text: #fff3e8;
+  background:
+    radial-gradient(circle at top, rgba(255, 159, 67, 0.12), transparent 40%),
+    #120c08;
+}
+
+html.theme-minimal,
+html.theme-minimal body {
+  --bg: #0d1117;
+  --cyan: #9db4c8;
+  --purple: #9db4c8;
+  --gold: #c8d0d8;
+  background: #0d1117;
+}
+
+html.theme-minimal .signal-panel {
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}

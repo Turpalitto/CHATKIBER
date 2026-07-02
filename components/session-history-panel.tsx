@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useI18n } from "@/components/locale-provider";
 import { SessionHistoryItem } from "@/hooks/useSessionHistory";
 
 interface SessionHistoryPanelProps {
@@ -10,15 +10,20 @@ interface SessionHistoryPanelProps {
 }
 
 export function SessionHistoryPanel({ history, onClose, onReplay }: SessionHistoryPanelProps) {
+  const { m, locale } = useI18n();
+  const copy = m.experience.history;
+
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4">
       <div className="signal-panel w-full max-w-lg rounded-3xl p-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6 flex items-center justify-between">
           <div>
-            <div className="text-xs text-white/50">ИСТОРИЯ</div>
-            <div className="text-xl font-medium">Прошлые сигналы</div>
+            <div className="text-xs text-white/50">{copy.eyebrow}</div>
+            <div className="text-xl font-medium">{copy.title}</div>
           </div>
-          <button onClick={onClose} className="text-white/60">✕</button>
+          <button type="button" onClick={onClose} className="text-white/60">
+            ✕
+          </button>
         </div>
 
         {history.length > 0 ? (
@@ -31,8 +36,8 @@ export function SessionHistoryPanel({ history, onClose, onReplay }: SessionHisto
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="font-medium text-white/90">{item.frequency.label}</div>
-                    <div className="text-xs text-white/50 mt-0.5">
-                      {new Date(item.startedAt).toLocaleDateString("ru-RU", {
+                    <div className="mt-0.5 text-xs text-white/50">
+                      {new Date(item.startedAt).toLocaleDateString(locale === "ru" ? "ru-RU" : "en-US", {
                         day: "numeric",
                         month: "short",
                         hour: "2-digit",
@@ -40,36 +45,31 @@ export function SessionHistoryPanel({ history, onClose, onReplay }: SessionHisto
                       })}
                     </div>
                   </div>
-                  <div className="text-right text-xs text-white/60">
-                    {item.durationMinutes} мин
-                  </div>
+                  <div className="text-right text-xs text-white/60">{item.durationMinutes} min</div>
                 </div>
 
                 <div className="mt-3 flex items-center justify-between text-xs">
                   <div className="text-white/50">
-                    {item.messagesCount} сообщений • {item.partnerLabel}
+                    {item.messagesCount} {copy.messages} • {item.partnerLabel}
                   </div>
-                  {onReplay && (
+                  {onReplay ? (
                     <button
+                      type="button"
                       onClick={() => onReplay(item)}
                       className="rounded-full border border-white/10 px-3 py-1 text-[10px] text-white/60 group-hover:text-white/80"
                     >
-                      Посмотреть
+                      →
                     </button>
-                  )}
+                  ) : null}
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="py-10 text-center text-sm text-white/40">
-            История пуста.<br />Проведи первый сигнал.
-          </div>
+          <div className="py-10 text-center text-sm text-white/40">{copy.empty}</div>
         )}
 
-        <div className="mt-6 text-center text-[10px] text-white/30">
-          История хранится только у тебя
-        </div>
+        <div className="mt-6 text-center text-[10px] text-white/30">{copy.footer}</div>
       </div>
     </div>
   );

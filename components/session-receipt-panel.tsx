@@ -5,7 +5,6 @@ import { useFutureMode } from "@/components/future-mode-provider";
 import { useFutureCopy } from "@/hooks/useFutureCopy";
 import { MemoryImprintViz } from "@/components/memory-imprint-viz";
 import { SessionFeedback } from "@/components/session-feedback";
-import { DeadDropPanel } from "@/components/dead-drop-panel";
 import { formatReceiptDuration } from "@/lib/session-receipt";
 import { Frequency, SessionReceipt, DeadDrop } from "@/lib/types";
 
@@ -17,6 +16,7 @@ interface SessionReceiptPanelProps {
   onLeaveDeadDrop: (body: string) => Promise<any>;
   deadDrops?: DeadDrop[];
   onOpenDeadDrops?: () => void;
+  onOpenEcho?: () => void;
 }
 
 export function SessionReceiptPanel({
@@ -26,7 +26,8 @@ export function SessionReceiptPanel({
   onTryAgain,
   onLeaveDeadDrop,
   deadDrops = [],
-  onOpenDeadDrops
+  onOpenDeadDrops,
+  onOpenEcho
 }: SessionReceiptPanelProps) {
   const m = useFutureCopy();
   const { enabled: futureMode } = useFutureMode();
@@ -58,7 +59,7 @@ export function SessionReceiptPanel({
         {r.duration}: {formatReceiptDuration(receipt.durationSeconds)}
       </p>
 
-      {!futureMode ? <SessionFeedback question={r.feedbackQuestion} thanks={r.feedbackThanks} /> : null}
+      {!futureMode ? <SessionFeedback question={r.feedbackQuestion} thanks={r.feedbackThanks} sessionToken={receipt.token} /> : null}
 
       {futureMode && receipt.memoryImprint ? (
         <MemoryImprintViz
@@ -98,21 +99,28 @@ export function SessionReceiptPanel({
         {r.continue}
       </button>
 
-      {/* Dead Drop Section - улучшенная версия */}
-      {frequency && (
-        <div className="mt-6">
+      {frequency && onOpenDeadDrops ? (
+        <div className="mt-6 space-y-2">
           <button
+            type="button"
             onClick={onOpenDeadDrops}
             className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 py-3 text-sm text-white/80 transition hover:border-cyan-400/30 hover:bg-white/10"
           >
             <span>🕳️</span>
-            <span>Dead Drop • {deadDrops.length} заметок</span>
+            <span>{m.experience.deadDropPanel.title} • {deadDrops.length}</span>
           </button>
-          <div className="mt-1.5 text-center text-[10px] text-white/35">
-            Анонимные сообщения на этой частоте
-          </div>
+          {onOpenEcho ? (
+            <button
+              type="button"
+              onClick={onOpenEcho}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-400/15 bg-amber-400/5 py-3 text-sm text-amber-200/80 transition hover:border-amber-400/30"
+            >
+              <span>📡</span>
+              <span>{m.experience.echo.open}</span>
+            </button>
+          ) : null}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

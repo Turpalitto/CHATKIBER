@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = requireSignalServer();
+    const preferredLocale = typeof body?.locale === "string" ? body.locale : null;
     const { data, error } = await supabase.rpc("join_signal_queue", {
       p_anon_token_hash: anonTokenHash,
       p_mode: mode,
@@ -36,7 +37,8 @@ export async function POST(request: NextRequest) {
       p_frequency_kind: frequency.kind,
       p_frequency_number: frequency.number,
       p_frequency_prompt: frequency.prompt,
-      p_channel_id: frequency.channelId ?? null
+      p_channel_id: frequency.channelId ?? null,
+      p_preferred_locale: preferredLocale
     });
 
     if (error) {

@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { submitSessionFeedback } from "@/lib/client-api/feedback";
 import { clearSessionFeedback, readSessionFeedback, saveSessionFeedback, SessionFeedbackValue } from "@/lib/session-feedback";
 
 interface SessionFeedbackProps {
   question: string;
   thanks: string;
+  sessionToken?: string;
 }
 
-export function SessionFeedback({ question, thanks }: SessionFeedbackProps) {
+export function SessionFeedback({ question, thanks, sessionToken }: SessionFeedbackProps) {
   const [value, setValue] = useState<SessionFeedbackValue | null>(null);
 
   useEffect(() => {
@@ -19,6 +21,7 @@ export function SessionFeedback({ question, thanks }: SessionFeedbackProps) {
   const pick = (next: SessionFeedbackValue) => {
     saveSessionFeedback(next);
     setValue(next);
+    void submitSessionFeedback(next, sessionToken);
   };
 
   if (value) {

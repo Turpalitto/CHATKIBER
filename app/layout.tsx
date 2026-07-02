@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { LocaleProvider } from "@/components/locale-provider";
 import { FutureModeProvider } from "@/components/future-mode-provider";
 import { SignalAudioProvider } from "@/components/signal-audio-provider";
+import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,7 +29,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <LocaleProvider>
           <FutureModeProvider>
-            <SignalAudioProvider>{children}</SignalAudioProvider>
+            <SignalAudioProvider>
+              <PwaRegister />
+              {children}
+            </SignalAudioProvider>
           </FutureModeProvider>
         </LocaleProvider>
       </body>

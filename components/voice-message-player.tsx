@@ -1,47 +1,50 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
 
 interface VoiceMessagePlayerProps {
   audioBlob?: Blob;
+  audioData?: string;
   duration: number;
   isSelf?: boolean;
+  label?: string;
 }
 
-export function VoiceMessagePlayer({ audioBlob, duration, isSelf = false }: VoiceMessagePlayerProps) {
+export function VoiceMessagePlayer({ audioBlob, audioData, duration, isSelf = false, label }: VoiceMessagePlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
 
   const togglePlay = () => {
-    if (!audioBlob) return;
+    if (!audioBlob && !audioData) {
+      return;
+    }
 
     if (!audioRef.current) {
-      const url = URL.createObjectURL(audioBlob);
-      urlRef.current = url;
+      const url = audioBlob ? URL.createObjectURL(audioBlob) : audioData!;
+      if (audioBlob) {
+        urlRef.current = url;
+      }
       const audio = new Audio(url);
-      audioRef.current = audio;
-
       audio.onended = () => {
         setIsPlaying(false);
         setProgress(0);
       };
-
       audio.ontimeupdate = () => {
         if (audio.duration) {
           setProgress((audio.currentTime / audio.duration) * 100);
         }
       };
+      audioRef.current = audio;
     }
 
     const audio = audioRef.current;
-
     if (isPlaying) {
       audio.pause();
       setIsPlaying(false);
     } else {
-      audio.play();
+      void audio.play();
       setIsPlaying(true);
     }
   };
@@ -53,8 +56,13 @@ export function VoiceMessagePlayer({ audioBlob, duration, isSelf = false }: Voic
   };
 
   return (
-    <div className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm ${isSelf ? "border-cyan-400/20 bg-cyan-400/5" : "border-white/10 bg-white/5"}`}>
+    <div
+      className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm ${
+        isSelf ? "border-cyan-400/20 bg-cyan-400/5" : "border-white/10 bg-white/5"
+      }`}
+    >
       <button
+        type="button"
         onClick={togglePlay}
         className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-lg transition hover:bg-white/20"
       >
@@ -63,14 +71,11 @@ export function VoiceMessagePlayer({ audioBlob, duration, isSelf = false }: Voic
 
       <div className="flex-1">
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-          <div 
-            className="h-full bg-cyan-400 transition-all" 
-            style={{ width: `${progress}%` }} 
-          />
+          <div className="h-full bg-cyan-400 transition-all" style={{ width: `${progress}%` }} />
         </div>
         <div className="mt-1 flex justify-between text-[10px] text-white/50">
           <span>{formatTime(duration)}</span>
-          <span>Голосовое</span>
+          <span>{label ?? "Voice"}</span>
         </div>
       </div>
     </div>

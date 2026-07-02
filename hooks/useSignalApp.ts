@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useBookmarks } from "./useBookmarks";
 import { useUserStats } from "./useUserStats";
 import { useSessionHistory } from "./useSessionHistory";
 import { useI18n } from "@/components/locale-provider";
@@ -10,7 +11,7 @@ import { resolveConnectParams } from "@/lib/connect-params";
 import { useSignalOnline } from "@/hooks/useSignalOnline";
 import { useSignalSession } from "@/hooks/useSignalSession";
 import { useNetworkEvents } from "@/hooks/useNetworkEvents";
-import { getChannelFrequency } from "@/lib/channels/tags";
+import { addCustomChannel, loadCustomChannels, resolveChannelFrequency } from "@/lib/custom-channels";
 import { leaveDeadDrop, fetchDeadDrops } from "@/lib/dead-drop";
 import { AppStage, Frequency, FrequencyKind, ModeOption, ToneOption, DeadDrop } from "@/lib/types";
 
@@ -20,6 +21,7 @@ export function useSignalApp() {
   const networkEvent = useNetworkEvents();
   const { stats: userStats, detailedStats, recordSession } = useUserStats();
   const { history: sessionHistory, addSession, clearHistory } = useSessionHistory();
+  const { bookmarks, addBookmark, removeBookmark } = useBookmarks();
 
   const [stage, setStage] = useState<AppStage>("landing");
   const [dailyFrequency, setDailyFrequency] = useState<Frequency>(() => getTodaysFrequency(undefined, locale));
@@ -28,6 +30,8 @@ export function useSignalApp() {
   const [mode, setMode] = useState<ModeOption>("both");
   const [tone, setTone] = useState<ToneOption>("deep");
   const [collisionWindow, setCollisionWindow] = useState(false);
+  const [customChannels, setCustomChannels] = useState(() => loadCustomChannels());
+  const historyRecordedRef = useRef<string | null>(null);
 
   const session = useSignalSession({
     activeFrequency,
@@ -47,11 +51,38 @@ export function useSignalApp() {
         return current;
       }
       if (current.kind === "channel" && current.channelId) {
-        return getChannelFrequency(current.channelId, locale) ?? current;
+        return resolveChannelFrequency(current.channelId, locale) ?? current;
       }
       return current.kind === "daily" ? nextDaily : nextRandom;
     });
   }, [locale]);
+
+  useEffect(() => {
+    if (stage !== "receipt" || !session.sessionReceipt || !activeFrequency || !session.sessionStartedAt) {
+      return;
+    }
+
+    const key = session.sessionReceipt.token;
+    if (historyRecordedRef.current === key) {
+      return;
+    }
+    historyRecordedRef.current = key;
+
+    const durationMin = Math.max(1, Math.round((Date.now() - session.sessionStartedAt) / 60000));
+    const label = activeFrequency.channelLabel || activeFrequency.prompt;
+
+    addSession({
+      frequency: {
+        label,
+        kind: activeFrequency.kind
+      },
+      startedAt: session.sessionStartedAt,
+      durationMinutes: durationMin,
+      messagesCount: session.messages.length,
+      partnerLabel: session.partnerLabel
+    });
+    recordSession(durationMin, label);
+  }, [activeFrequency, addSession, recordSession, session.messages.length, session.partnerLabel, session.sessionReceipt, session.sessionStartedAt, stage]);
 
   const applyConnectConstraints = useCallback(
     (frequency: Frequency, connectMode: ModeOption, connectTone: ToneOption) => {
@@ -89,13 +120,29 @@ export function useSignalApp() {
 
   const chooseChannel = useCallback(
     (tagId: string) => {
-      const frequency = getChannelFrequency(tagId, locale);
+      const frequency = resolveChannelFrequency(tagId, locale);
       if (!frequency) {
         return;
       }
       startConnect(frequency);
     },
     [locale, startConnect]
+  );
+
+  const createCustomChannel = useCallback((name: string, prompt: string) => {
+    const channel = addCustomChannel(name, prompt);
+    setCustomChannels(loadCustomChannels());
+    return channel;
+  }, []);
+
+  const bookmarkMessage = useCallback(
+    (messageText: string) => {
+      if (!activeFrequency) {
+        return;
+      }
+      addBookmark(messageText, session.sessionReceipt?.token ?? "live", activeFrequency.channelLabel || activeFrequency.prompt);
+    },
+    [activeFrequency, addBookmark, session.sessionReceipt?.token]
   );
 
   const begin = useCallback(() => {
@@ -114,6 +161,7 @@ export function useSignalApp() {
     session.clearEngine();
     session.resetWarnings();
     setCollisionWindow(false);
+    historyRecordedRef.current = null;
     setStage("landing");
   }, [locale, session]);
 
@@ -131,7 +179,7 @@ export function useSignalApp() {
   }, []);
 
   const leaveDeadDropNote = useCallback(
-    async (body: string): Promise<any> => {
+    async (body: string) => {
       if (!activeFrequency) {
         return null;
       }
@@ -149,24 +197,6 @@ export function useSignalApp() {
     setStage("landing");
   }, [session]);
 
-  // Автоматическая запись в историю при завершении сессии
-  useEffect(() => {
-    if (stage === "receipt" && activeFrequency && session.sessionStartedAt) {
-      const durationMin = Math.max(1, Math.round((Date.now() - session.sessionStartedAt) / 60000));
-      
-      addSession({
-        frequency: {
-          label: activeFrequency.channelLabel || activeFrequency.prompt,
-          kind: activeFrequency.kind
-        },
-        startedAt: session.sessionStartedAt,
-        durationMinutes: durationMin,
-        messagesCount: session.messages.length,
-        partnerLabel: session.partnerLabel
-      });
-    }
-  }, [stage]);
-
   return {
     stage,
     onlineCount,
@@ -177,6 +207,7 @@ export function useSignalApp() {
     tone,
     networkEvent,
     collisionWindow,
+    customChannels,
     messages: session.messages,
     typing: session.typing,
     warning: session.warning,
@@ -189,10 +220,15 @@ export function useSignalApp() {
     disconnectReason: session.disconnectReason,
     sessionReceipt: session.sessionReceipt,
     witnessReport: session.witnessReport,
+    reconnectVisible: session.reconnectVisible,
+    reconnectAttempt: session.reconnectAttempt,
+    retryReconnect: session.retryReconnect,
+    dismissReconnect: session.dismissReconnect,
     begin,
     quickConnect,
     chooseFrequency,
     chooseChannel,
+    createCustomChannel,
     backToLanding,
     setMode,
     setTone,
@@ -212,15 +248,16 @@ export function useSignalApp() {
     dismissWarning: session.dismissWarning,
     dismissWitness: session.dismissWitness,
     closeReceipt,
-    leaveDeadDrop: leaveDeadDropNote as any,
+    leaveDeadDrop: leaveDeadDropNote,
     deadDrops,
     loadDeadDrops,
     findAnotherSignal,
     userStats,
     detailedStats,
-    recordSession,
     sessionHistory,
-    addSession,
     clearHistory,
+    bookmarks,
+    removeBookmark,
+    bookmarkMessage
   } as const;
 }

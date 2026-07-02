@@ -104,6 +104,8 @@ export interface Message {
   type: "text" | "system" | "voice";
   text: string;
   createdAt: number;
+  audioData?: string;
+  audioDuration?: number;
 }
 
 export interface ModerationResult {

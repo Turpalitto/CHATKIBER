@@ -41,6 +41,23 @@ export function dispatchRelayEvent(event: RelayEventRow, emit: (event: EngineEve
     return;
   }
 
+  if (event.event_type === "voice-message") {
+    const duration = typeof event.payload.audioDuration === "number" ? event.payload.audioDuration : 0;
+    emit({
+      type: "message",
+      message: {
+        id: typeof event.payload.id === "string" ? event.payload.id : uid("msg"),
+        sender: "peer",
+        type: "voice",
+        text: "",
+        audioData: typeof event.payload.audioData === "string" ? event.payload.audioData : undefined,
+        audioDuration: duration,
+        createdAt: typeof event.payload.createdAt === "number" ? event.payload.createdAt : Date.now()
+      }
+    });
+    return;
+  }
+
   if (event.event_type === "terminal") {
     emit({
       type: "message",

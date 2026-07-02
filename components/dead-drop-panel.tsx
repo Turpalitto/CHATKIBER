@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useFutureCopy } from "@/hooks/useFutureCopy";
+import { useI18n } from "@/components/locale-provider";
 import { DeadDrop, Frequency } from "@/lib/types";
 import { getDeadDropTimeLeft } from "@/lib/dead-drop";
 
@@ -22,7 +22,8 @@ export function DeadDropPanel({
   isOpen
 }: DeadDropPanelProps) {
   const sortedDrops = [...drops].sort((a, b) => b.createdAt - a.createdAt);
-  const m = useFutureCopy();
+  const { m, locale } = useI18n();
+  const panel = m.experience.deadDropPanel;
   const [newDrop, setNewDrop] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -53,7 +54,7 @@ export function DeadDropPanel({
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium text-cyan-400/80">DEAD DROP</div>
+            <div className="text-sm font-medium text-cyan-400/80">{panel.title.toUpperCase()}</div>
             <div className="text-xl font-medium text-white">
               {frequency?.channelLabel || frequency?.prompt || "Частота"}
             </div>
@@ -73,14 +74,14 @@ export function DeadDropPanel({
               onClick={() => setShowForm(true)}
               className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 py-3 text-sm font-medium text-white/80 transition hover:border-cyan-400/30 hover:bg-white/10"
             >
-              + Оставить анонимную заметку
+              + {panel.leave}
             </button>
           ) : (
             <div className="space-y-3">
               <textarea
                 value={newDrop}
                 onChange={(e) => setNewDrop(e.target.value)}
-                placeholder="Напиши что-то, что останется здесь..."
+                placeholder={panel.placeholder}
                 maxLength={160}
                 rows={3}
                 className="w-full resize-none rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-cyan-400/40 focus:outline-none"
@@ -93,14 +94,14 @@ export function DeadDropPanel({
                   }}
                   className="flex-1 rounded-xl border border-white/10 py-2 text-white/60 hover:bg-white/5"
                 >
-                  Отмена
+                  {m.experience.echo.cancel}
                 </button>
                 <button
                   onClick={() => void handleSubmit()}
                   disabled={!newDrop.trim() || isSubmitting}
                   className="flex-1 rounded-xl border border-cyan-400/30 bg-cyan-400/10 py-2 text-cyan-200 disabled:opacity-50"
                 >
-                  {isSubmitting ? "Отправка..." : "Оставить"}
+                  {isSubmitting ? panel.submitting : panel.submit}
                 </button>
               </div>
               <div className="text-right text-[10px] text-white/30">
@@ -134,7 +135,7 @@ export function DeadDropPanel({
                     <div className="mt-3 flex items-center justify-between text-[10px] text-white/40">
                       <span>{getDeadDropTimeLeft(drop)} осталось</span>
                       <span>
-                        {new Date(drop.createdAt).toLocaleDateString("ru-RU", {
+                        {new Date(drop.createdAt).toLocaleDateString(locale === "ru" ? "ru-RU" : "en-US", {
                           month: "short",
                           day: "numeric"
                         })}
@@ -145,15 +146,13 @@ export function DeadDropPanel({
               </div>
             ) : (
               <div className="rounded-2xl border border-white/8 bg-white/[0.015] py-8 text-center text-sm text-white/40">
-                Пока никто не оставил заметок.<br />Будь первым.
+                {panel.empty}
               </div>
             )}
           </AnimatePresence>
         </div>
 
-        <div className="mt-6 text-center text-[10px] text-white/30">
-          Сообщения видны только на этой частоте. Анонимно.
-        </div>
+        <div className="mt-6 text-center text-[10px] text-white/30">{m.deadDrop.description}</div>
       </motion.div>
     </div>
   );

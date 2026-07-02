@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useReconnect } from "./useReconnect";
 import { useI18n } from "@/components/locale-provider";
 import { useFutureCopy } from "@/hooks/useFutureCopy";
 import { getAnonymousId, hashAnonymousId } from "@/lib/anonymous";
@@ -84,6 +83,11 @@ export function useSignalSession({ activeFrequency, mode, tone, setStage }: UseS
   const sessionSealPayloadRef = useRef<string | null>(null);
   const violationCountRef = useRef(0);
   const messagesRef = useRef<Message[]>([]);
+  const intentionalEndRef = useRef(false);
+  const [reconnectVisible, setReconnectVisible] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -150,8 +154,6 @@ export function useSignalSession({ activeFrequency, mode, tone, setStage }: UseS
         engineRef.current = null;
       }
 
-      resetRetries();
-
       setTyping(false);
       setLatestWebRtcSignal(null);
       setDisconnectReason(reason ?? null);
@@ -168,8 +170,6 @@ export function useSignalSession({ activeFrequency, mode, tone, setStage }: UseS
           sealPayload: sessionSealPayloadRef.current ?? undefined
         });
         setSessionReceipt(receipt);
-        setSessionStartedAt(null);
-        sessionStartedAtRef.current = null;
 
         if (process.env.NEXT_PUBLIC_SIGNAL_LIVE === "1" && sessionFrequencyRef.current) {
           void fetch("/api/signal/receipt", {
@@ -223,6 +223,10 @@ export function useSignalSession({ activeFrequency, mode, tone, setStage }: UseS
       const startedAt = Date.now();
       setSessionStartedAt(startedAt);
       sessionStartedAtRef.current = startedAt;
+      setReconnectVisible(false);
+      setReconnectAttempt(0);
+      reconnectAttemptRef.current = 0;
+      intentionalEndRef.current = false;
       sessionSealPayloadRef.current = `${frequency.id}:${startedAt}:${nextPartnerLabel}`;
       sessionFrequencyRef.current = frequency;
       sessionToneRef.current = tone;
@@ -278,6 +282,7 @@ export function useSignalSession({ activeFrequency, mode, tone, setStage }: UseS
 
   const terminate = useCallback(
     async (reason?: string) => {
+      intentionalEndRef.current = true;
       await finishSession(reason);
     },
     [finishSession]
@@ -337,7 +342,28 @@ export function useSignalSession({ activeFrequency, mode, tone, setStage }: UseS
           return;
         }
 
-        void finishSession(event.reason ?? mRef.current.system.sessionClosed);
+        if (event.type === "disconnected") {
+          if (!intentionalEndRef.current && sessionStartedAtRef.current && reconnectAttemptRef.current < 5) {
+            reconnectAttemptRef.current += 1;
+            setReconnectVisible(true);
+            setReconnectAttempt(reconnectAttemptRef.current);
+            searchCommittedRef.current = false;
+            if (reconnectTimerRef.current) {
+              clearTimeout(reconnectTimerRef.current);
+            }
+            const attempt = reconnectAttemptRef.current;
+            reconnectTimerRef.current = setTimeout(() => {
+              setMessages((current) => [
+                ...current,
+                buildSystemMessage(mRef.current.experience.reconnect.trying)
+              ]);
+              void commitSearch();
+            }, Math.min(1500 * attempt, 8000));
+            return;
+          }
+
+          void finishSession(event.reason ?? mRef.current.system.sessionClosed);
+        }
       });
 
       const result = await engine.connect({
@@ -514,19 +540,30 @@ export function useSignalSession({ activeFrequency, mode, tone, setStage }: UseS
   }, []);
 
   const sendVoiceMessage = useCallback(async (audioBlob: Blob, duration: number) => {
-    if (!engineRef.current) return;
+    if (!engineRef.current) {
+      return;
+    }
 
+    const audioData = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error("Voice encoding failed"));
+      reader.readAsDataURL(audioBlob);
+    });
+
+    const label = mRef.current.chat.voiceMessageLabel.replace("{duration}", duration.toFixed(1));
     const message: Message = {
       id: uid("msg"),
       sender: "self",
       type: "voice",
-      text: `🎙️ Голосовое сообщение (${duration.toFixed(1)}с)`,
+      text: label,
+      audioData,
+      audioDuration: duration,
       createdAt: Date.now()
     };
 
     setMessages((current) => [...current, message]);
-
-    // TODO: отправка через engine
+    await engineRef.current.sendVoiceMessage(audioData, duration);
   }, []);
 
   const sendWebRtcSignal = useCallback(async (signal: WebRtcSignalMessage) => {
@@ -655,17 +692,27 @@ export function useSignalSession({ activeFrequency, mode, tone, setStage }: UseS
 
   const closeReceipt = useCallback(() => {
     setSessionReceipt(null);
+    setSessionStartedAt(null);
+    sessionStartedAtRef.current = null;
     setStage("lost");
   }, [setStage]);
 
-  // Улучшенный reconnect
-  const { attemptReconnect, resetRetries } = useReconnect({
-    onReconnect: () => {
-      if (engineRef.current) {
-        appendSystemMessage("🔄 Пытаемся восстановить соединение...");
-      }
+  const retryReconnect = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
     }
-  });
+    searchCommittedRef.current = false;
+    void commitSearch();
+  }, [commitSearch]);
+
+  const dismissReconnect = useCallback(() => {
+    intentionalEndRef.current = true;
+    setReconnectVisible(false);
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+    }
+    void finishSession(mRef.current.system.sessionClosed);
+  }, [finishSession]);
 
   return {
     messages,
@@ -699,6 +746,10 @@ export function useSignalSession({ activeFrequency, mode, tone, setStage }: UseS
     cancelWaiting,
     dismissWarning,
     dismissWitness,
-    closeReceipt
+    closeReceipt,
+    reconnectVisible,
+    reconnectAttempt,
+    retryReconnect,
+    dismissReconnect
   };
 }

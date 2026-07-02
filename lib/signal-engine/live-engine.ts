@@ -249,7 +249,8 @@ export function createLiveSignalEngine(): SignalEngine {
         anonTokenHash: options.anonId,
         mode: options.mode,
         tone: options.tone,
-        frequency: options.frequency
+        frequency: options.frequency,
+        locale: options.locale ?? null
       });
 
       if (payload.status === "matched" && payload.sessionId) {
@@ -312,6 +313,19 @@ export function createLiveSignalEngine(): SignalEngine {
         anonTokenHash: activeAnonHash,
         kind: "voice-pulse",
         level
+      });
+    },
+    async sendVoiceMessage(audioData: string, duration: number) {
+      if (!sessionId || !activeAnonHash) {
+        return;
+      }
+
+      await postJson<{ status: string }>("/api/signal/send", {
+        sessionId,
+        anonTokenHash: activeAnonHash,
+        kind: "voice-message",
+        text: audioData,
+        level: duration
       });
     },
     async sendWebRtcSignal(signal: WebRtcSignalMessage) {
